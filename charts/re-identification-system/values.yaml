@@ -1,0 +1,25 @@
+basePath: /re-identification-system
+domain: teknoir.cloud
+mediaServiceBaseUrl: https://teknoir.cloud/victra-poc/media-service/api
+
+image:
+  repository: us-docker.pkg.dev/teknoir/gcr.io/re-identification-system
+  tag: latest
+
+mongo:
+  image:
+    repository: mongo
+    tag: "8.0"
+    pullPolicy: Always
+  auth:
+    username: teknoir
+    password: change-me
+  service:
+    port: 27017
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 1Gi

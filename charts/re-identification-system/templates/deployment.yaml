@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: re-identification-system
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      application: re-identification-system
+  template:
+    metadata:
+      labels:
+        application: re-identification-system
+    spec:
+      containers:
+        - name: re-identification-system
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: REID_MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: re-id-mongo
+                  key: uri
+            - name: HISTORIAN_MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-credentials
+                  key: service_uri
+            - name: MEDIA_SERVICE_BASE_URL
+              value: {{ .Values.mediaServiceBaseUrl | quote }}
+            - name: BASE_URL
+              value: {{ .Values.basePath | quote }}
+            - name: NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: DOMAIN
+              value: {{ .Values.domain | quote }}
+            - name: PORT
+              value: "3000"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi

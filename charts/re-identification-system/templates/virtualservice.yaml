@@ -1,0 +1,19 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: re-identification-system
+  namespace: {{ .Release.Namespace }}
+spec:
+  gateways:
+    - teknoir/teknoir-gateway
+  hosts:
+    - '*'
+  http:
+    - match:
+        - uri:
+            prefix: {{ .Values.basePath | quote }}
+      route:
+        - destination:
+            host: re-identification-system.{{ .Release.Namespace }}.svc.cluster.local
+            port:
+              number: 80

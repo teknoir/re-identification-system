@@ -1,0 +1,16 @@
+---
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: re-identification-system
+  namespace: dataset-curation
+spec:
+  repo: https://teknoir.github.io/re-identification-system-helm
+  chart: re-identification-system
+  targetNamespace: dataset-curation
+  valuesContent: |-
+    # Example for minimal configuration
+    mongo:
+      auth:
+        username: teknoir
+        password: teknoir123456!

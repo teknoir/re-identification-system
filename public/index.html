@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Line Crossing Alerts - Dev Page</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script>
+      // Infer BASE_URL from current location path where index.html is served.
+      (function() {
+        var path = window.location.pathname;
+        // If path ends with '/', keep; else ensure trailing slash for directory resolution
+        // We only want the mounted base segment(s) before index.html assets.
+        // Since assets are served directly under BASE_URL root, we treat full path except last segment if it's a file.
+        // For typical mounting, index.html appears at BASE_URL + '/'.
+        // We'll derive BASE_URL as path without trailing slash, except root.
+        var base = path;
+        // Remove trailing slash(s)
+        base = base.replace(/\/+$/, '');
+        // If base contains a dot (like /foo/index.html) trim to directory
+        if (/\/[^\/]+\.[a-zA-Z0-9]+$/.test(base)) {
+          base = base.replace(/\/[^\/]+$/, '');
+        }
+        if (base === '') base = ''; // root stays empty
+        window.__BASE_URL__ = base; // consumed by api.js
+      })();
+    </script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1 class="h-section main-title">Line Crossing Alerts</h1>
+            <div class="header-controls">
+                <span id="status">Loading...</span>
+            </div>
+        </header>
+
+        <div class="filters">
+            <input type="text" id="searchInput" placeholder="Search by Alert ID (e.g., nc0009-salefloor-270-155f0f2e-935-lc-exit-0)">
+            <div class="date-filters">
+                <label for="startDate">From:</label>
+                <input type="datetime-local" id="startDate">
+                <label for="endDate">To:</label>
+                <input type="datetime-local" id="endDate">
+            </div>
+            <button id="searchBtn">Search</button>
+            <button id="clearBtn">Clear</button>
+        </div>
+
+        <div class="main-content">
+            <div class="alerts-list">
+                <h2>Alerts</h2>
+                <div id="alertsContainer">
+                    <!-- Alerts will be loaded here -->
+                </div>
+                <div class="pagination" id="pagination">
+                    <!-- Pagination controls will be loaded here -->
+                </div>
+            </div>
+        </div>
+        <div class="burst-preview-section" id="burstPreviewSection">
+            <div class="burst-preview-header">
+                <h2 class="h-section">Burst Preview</h2>
+                <div class="burst-preview-controls">
+                    <label class="bp-control">
+                        <span>Date</span>
+                        <input type="date" id="burstDate">
+                    </label>
+                    <div class="bp-control">
+                        <span>Direction</span>
+                        <div class="bp-radio-group">
+                            <label><input type="radio" name="burstDirection" value="entry"> Entry</label>
+                            <label><input type="radio" name="burstDirection" value="exit"> Exit</label>
+                            <label><input type="radio" name="burstDirection" value="both" checked> Both</label>
+                        </div>
+                    </div>
+                    <label class="bp-control">
+                        <span>Camera (optional)</span>
+                        <input type="text" id="burstCamera" placeholder="e.g. nc0009-salefloor-270">
+                    </label>
+                    <button id="burstLoadBtn">Load Bursts</button>
+                </div>
+            </div>
+            <div class="burst-preview-status" id="burstPreviewStatus"></div>
+            <div class="burst-preview-viewer" id="burstPreviewViewer">
+                <p class="placeholder">Select a burst to preview.</p>
+            </div>
+            <div class="burst-preview-grid" id="burstPreviewGrid">
+                <p class="placeholder">Select filters above and click “Load Bursts” to preview cutouts.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for alert details -->
+    <div id="alertModal" class="modal">
+        <div class="modal-content alert-modal-content">
+            <span class="close" id="closeAlertModal">&times;</span>
+            <div id="alertModalContent">
+                <!-- Alert details will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for full image view (old modal, keeping for compatibility) -->
+    <div id="imageModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="imageContainer">
+                <canvas id="imageCanvas"></canvas>
+            </div>
+            <div id="imageMetadata"></div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/canvas.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
