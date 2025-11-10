@@ -3,6 +3,16 @@ entries:
   re-identification-system:
   - apiVersion: v2
     appVersion: 0.1.0
+    created: "2025-11-10T13:50:33.763167425Z"
+    description: Helm chart for deploying Re-Identification System services.
+    digest: 08b35135a26572b19672049a085a0a45def81f6372ff5ec9d49aeb1781b86383
+    name: re-identification-system
+    type: application
+    urls:
+    - https://github.com/teknoir/re-identification-system/releases/download/re-identification-system-0.0.1-beta.3/re-identification-system-0.0.1-beta.3.tgz
+    version: 0.0.1-beta.3
+  - apiVersion: v2
+    appVersion: 0.1.0
     created: "2025-11-10T13:40:03.528904819Z"
     description: Helm chart for deploying Re-Identification System services.
     digest: 709953cc9f37480b88c6c2e4f01582bf8311840dadf2fd6470aa2f6f209bb377
@@ -11,4 +21,4 @@ entries:
     urls:
     - https://github.com/teknoir/re-identification-system/releases/download/re-identification-system-0.0.1-beta.2/re-identification-system-0.0.1-beta.2.tgz
     version: 0.0.1-beta.2
-generated: "2025-11-10T13:40:03.528917322Z"
+generated: "2025-11-10T13:50:33.763186992Z"
