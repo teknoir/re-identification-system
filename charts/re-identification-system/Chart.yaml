@@ -2,12 +2,12 @@ apiVersion: v2
 name: re-identification-system
 description: Helm chart for deploying Re-Identification System services.
 type: application
-version: 0.0.2-beta-6
+version: 0.0.2-beta-7
 appVersion: "0.1.0"
 
 dependencies:
   - name: triton
-    version: 0.2.0-cloud.1
+    version: 0.2.0-cloud.3
     repository: https://teknoir.github.io/triton-helm
   - name: event-processing-pipeline
     version: 0.0.1

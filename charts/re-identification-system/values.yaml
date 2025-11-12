@@ -39,9 +39,6 @@ event-processing-pipeline:
 triton:
   enabled: true
 
-  nodePort:
-    enabled: false
-
   models:
     - name: swin-reid
       image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-local-20251112-104202
