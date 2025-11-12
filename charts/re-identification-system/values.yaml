@@ -23,3 +23,25 @@ mongo:
     limits:
       cpu: 1
       memory: 1Gi
+
+event-processing-pipeline:
+  enabled: true
+
+  streams:
+    - stream: cloud-line-crossing
+      image:
+        repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
+        tag: feature-line-crossing-cloud-stream-6afbeda
+      mongodbSecretKeyRef:
+        name: re-id-mongo
+        key: uri
+
+triton:
+  enabled: true
+
+  nodePort:
+    enabled: false
+
+  models:
+    - name: swin-reid
+      image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-local-20251112-104202
