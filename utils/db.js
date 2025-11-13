@@ -22,10 +22,10 @@ async function connectToHistorianDatabase() {
         await historianClient.connect();
 
         // Extract database name from URI or use default
-        const dbName = uri.split('/').pop().split('?')[0] || 'historian';
+        const dbName = 'historian';
         historianDB = historianClient.db(dbName);
 
-        console.log(`Connected to MongoDB`);
+        console.log(`Connected to Historian MongoDB`);
         console.log(`Using database: ${dbName}`);
         return historianDB;
     } catch (error) {
@@ -49,10 +49,10 @@ async function connectToReIdDatabase() {
         await reIdClient.connect();
 
         // Extract database name from URI or use default
-        const dbName = uri.split('/').pop().split('?')[0] || 'historian';
+        const dbName = 'historian';
         reIdDB = reIdClient.db(dbName);
 
-        console.log(`Connected to MongoDB`);
+        console.log(`Connected to ReId MongoDB`);
         console.log(`Using database: ${dbName}`);
         return reIdDB;
     } catch (error) {
