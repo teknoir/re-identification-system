@@ -1,5 +1,5 @@
 const express = require('express');
-const { getDatabase } = require('../utils/db');
+const { getHistorianDatabase } = require('../utils/db');
 const { ObjectId } = require('mongodb');
 const { enrichAlert } = require('../utils/enrichAlert');
 
@@ -8,7 +8,7 @@ const router = express.Router();
 // GET /api/alerts - List all alerts with pagination and search
 router.get('/', async (req, res) => {
   try {
-    const db = getDatabase();
+    const db = getHistorianDatabase();
     const collection = db.collection('alerts');
 
     // Pagination
@@ -117,7 +117,7 @@ router.get('/', async (req, res) => {
 // GET /api/alerts/:id - Get specific alert details
 router.get('/:id', async (req, res) => {
   try {
-    const db = getDatabase();
+    const db = getHistorianDatabase();
     const collection = db.collection('alerts');
 
     const alert = await collection.findOne({ _id: new ObjectId(req.params.id) });

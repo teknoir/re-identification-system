@@ -1,5 +1,5 @@
 const express = require('express');
-const { getDatabase } = require('../utils/db');
+const { getReIdDatabase } = require('../utils/db');
 
 const router = express.Router();
 
@@ -31,7 +31,7 @@ function resolveNested(obj, pathParts) {
 
 router.get('/', async (req, res) => {
   try {
-    const db = getDatabase();
+    const db = getReIdDatabase();
     const collection = getLineCrossingsCollection(db);
     const limit = Math.min(parseInt(req.query.limit, 10) || 60, 120);
     const mediaBaseUrl = process.env.MEDIA_SERVICE_BASE_URL || 'https://teknoir.cloud/victra-poc/media-service/api';

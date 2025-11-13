@@ -110,13 +110,18 @@ if ! check_service_running "mongodb" 27017; then
     forward_and_catch "mongodb" 27017 27017 "$NAMESPACE" &
 fi
 
+
+if ! check_service_running "re-id-mongo" 37017; then
+    forward_and_catch "re-id-mongo" 37017 27017 "$NAMESPACE" &
+fi
+
 if ! check_service_running "sdmc-media-service" 8882; then
     forward_and_catch "sdmc-media-service" 8882 80 "$NAMESPACE" &
 fi
 
 echo "Waiting for essential services..."
 for i in {1..30}; do
-    if nc -z localhost 27017 2>/dev/null; then
+    if nc -z localhost 27017 2>/dev/null && nc -z localhost 37017 2>/dev/null && nc -z localhost 8882 2>/dev/null; then
         echo "Essential services are ready!"
         break
     fi
@@ -147,7 +152,11 @@ echo "Starting dev server..."
 export MONGODB_PASSWORD=$(kubectl --context=$CONTEXT --namespace=$NAMESPACE get secret mongodb-credentials -o yaml | yq .data.password | base64 -d)
 export MONGODB_USER=$(kubectl --context=$CONTEXT --namespace=$NAMESPACE get secret mongodb-credentials -o yaml | yq .data.username | base64 -d)
 export HISTORIAN_MONGODB_URI="mongodb://${MONGODB_USER}:${MONGODB_PASSWORD}@localhost:27017/historian?authSource=admin&readPreference=primary&appname=LC&ssl=false"
-export MONGO_DATABASE="alerts"
+
+export REID_MONGODB_PASSWORD=$(kubectl --context=$CONTEXT --namespace=$NAMESPACE get secret re-id-mongo -o yaml | yq .data.password | base64 -d)
+export REID_MONGODB_USER=$(kubectl --context=$CONTEXT --namespace=$NAMESPACE get secret re-id-mongo -o yaml | yq .data.username | base64 -d)
+export REID_MONGODB_URI="mongodb://${REID_MONGODB_USER}:${REID_MONGODB_PASSWORD}@localhost:37017/historian?authSource=admin&readPreference=primary&appname=LC&ssl=false"
+
 export MEDIA_SERVICE_BASE_URL="http://localhost:8882/$NAMESPACE/media-service/api"
 export BASE_URL="/"
 export PORT=3000

@@ -41,4 +41,17 @@ spec:
     image:
       repository: ${IMAGE}
       tag: ${BRANCH_NAME}-${SHORT_SHA}
+
+    event-processing-pipeline:
+      streams:
+        - stream: cloud-line-crossing
+          #debugLevel: DEBUG
+          domain: ${DOMAIN}
+          image:
+            repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
+            tag: feature-line-crossing-cloud-stream-6afbeda
+          mongodbSecretKeyRef:
+            name: re-id-mongo
+            key: uri
+          serviceAccountName: default-editor
 EOF
