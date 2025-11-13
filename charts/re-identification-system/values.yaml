@@ -35,6 +35,7 @@ event-processing-pipeline:
       mongodbSecretKeyRef:
         name: re-id-mongo
         key: uri
+      serviceAccountName: default-editor
 
 triton:
   enabled: true
