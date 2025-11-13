@@ -1,7 +1,7 @@
 const express = require('express');
-const { getHistorianDatabase } = require('../utils/db');
-const { ObjectId } = require('mongodb');
-const { enrichAlert } = require('../utils/enrichAlert');
+const {getHistorianDatabase} = require('../utils/db');
+const {ObjectId} = require('mongodb');
+const {enrichAlert} = require('../utils/enrichAlert');
 
 const router = express.Router();
 
@@ -17,16 +17,16 @@ router.get('/', async (req, res) => {
     const skip = (page - 1) * limit;
 
     // Base filter - only line_crossing alerts
-    let baseFilter = { type: 'line_crossing' };
-    let filter = { ...baseFilter };
+    let baseFilter = {type: 'line_crossing'};
+    let filter = {...baseFilter};
 
     // Search filter on alert ID (the 'id' field, not '_id')
     if (req.query.search) {
-      filter.id = { $regex: req.query.search, $options: 'i' }; // case-insensitive search
+      filter.id = {$regex: req.query.search, $options: 'i'}; // case-insensitive search
     }
 
     // Determine storage type of start_time once (Date vs String)
-    const sample = await collection.findOne(baseFilter, { projection: { start_time: 1 } });
+    const sample = await collection.findOne(baseFilter, {projection: {start_time: 1}});
     const startTimeIsDate = sample && sample.start_time instanceof Date;
 
     let appliedDateFilter = false;
@@ -45,7 +45,7 @@ router.get('/', async (req, res) => {
         if (startDateValue) {
           exprConditions.push({
             $gte: [
-              { $dateFromString: { dateString: '$start_time' } },
+              {$dateFromString: {dateString: '$start_time'}},
               startDateValue
             ]
           });
@@ -53,13 +53,13 @@ router.get('/', async (req, res) => {
         if (endDateValue) {
           exprConditions.push({
             $lte: [
-              { $dateFromString: { dateString: '$start_time' } },
+              {$dateFromString: {dateString: '$start_time'}},
               endDateValue
             ]
           });
         }
         if (exprConditions.length > 0) {
-          filter.$expr = { $and: exprConditions };
+          filter.$expr = {$and: exprConditions};
         }
       }
       appliedDateFilter = true;
@@ -80,7 +80,7 @@ router.get('/', async (req, res) => {
     // Fetch alerts - sorted by start_time descending (latest first)
     const alerts = await collection
       .find(filter)
-      .sort({ start_time: -1 })
+      .sort({start_time: -1})
       .skip(skip)
       .limit(limit)
       .toArray();
@@ -110,7 +110,7 @@ router.get('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching alerts:', error);
-    res.status(500).json({ error: 'Failed to fetch alerts', message: error.message });
+    res.status(500).json({error: 'Failed to fetch alerts', message: error.message});
   }
 });
 
@@ -120,10 +120,10 @@ router.get('/:id', async (req, res) => {
     const db = getHistorianDatabase();
     const collection = db.collection('alerts');
 
-    const alert = await collection.findOne({ _id: new ObjectId(req.params.id) });
+    const alert = await collection.findOne({_id: new ObjectId(req.params.id)});
 
     if (!alert) {
-      return res.status(404).json({ error: 'Alert not found' });
+      return res.status(404).json({error: 'Alert not found'});
     }
 
     // Transform alert to include direct media service URLs
@@ -143,7 +143,12 @@ router.get('/:id', async (req, res) => {
 
     if (enrichFlag) {
       try {
-        transformedAlert = await enrichAlert(transformedAlert, db, { enrich: true, includeRaw, debug: debugFlag, includeBoth });
+        transformedAlert = await enrichAlert(transformedAlert, {
+          enrich: true,
+          includeRaw,
+          debug: debugFlag,
+          includeBoth
+        });
         if (debugFlag && transformedAlert.enrichment?.debug?.attempts) {
           transformedAlert.enrichment.debug.prettyPrintedAttempts = transformedAlert.enrichment.debug.attempts.map(a => ({
             strategy: a.strategy,
@@ -155,14 +160,14 @@ router.get('/:id', async (req, res) => {
           }));
         }
       } catch (e) {
-        transformedAlert.enrichment = { error: e.message };
+        transformedAlert.enrichment = {error: e.message};
       }
     }
 
     res.json(transformedAlert);
   } catch (error) {
     console.error('Error fetching alert:', error);
-    res.status(500).json({ error: 'Failed to fetch alert', message: error.message });
+    res.status(500).json({error: 'Failed to fetch alert', message: error.message});
   }
 });
 

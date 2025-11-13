@@ -4,11 +4,11 @@ const { getReIdDatabase } = require('../utils/db');
 const router = express.Router();
 
 function getLineCrossingsCollection(db) {
-  const primary = process.env.LINE_CROSSINGS_COLLECTION || 'line_crossings';
+  const primary = process.env.LINE_CROSSINGS_COLLECTION || 'line-crossings';
   try {
     return db.collection(primary);
   } catch (_) {
-    return db.collection('line_crossings');
+    return db.collection('line-crossings');
   }
 }
 
@@ -83,7 +83,7 @@ router.get('/', async (req, res) => {
       .toArray();
 
     const bursts = docs.map((doc) => {
-      const burst = Array.isArray(doc.data?.burst) ? doc.data.burst : [];
+      const burst = Array.isArray(doc.data?.files) ? doc.data.files : [];
       const burstImagesFull = burst.map((p) => `${mediaBaseUrl}/jpeg/${normalizeMediaPath(p)}`);
       const directionValue =
         doc.metadata?.annotations?.['teknoir.org/linedir'] ||

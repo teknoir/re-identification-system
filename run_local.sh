@@ -2,7 +2,28 @@
 set -eo pipefail
 #set -x
 
-export TARGET="victra-poc"
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+key="$1"
+
+case $key in
+    -t|--target)
+    TARGET="$2"
+    shift
+    shift
+    ;;
+    *)
+    POSITIONAL+=("$1")
+    shift
+    ;;
+esac
+done
+
+if [ -z "$TARGET" ]; then
+    TARGET="victra-poc"
+fi
+
 export NAMESPACE=${TARGET}
 export CONTEXT="gke_teknoir_us-central1-c_teknoir-cluster"
 export PROJECT="teknoir"

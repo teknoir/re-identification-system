@@ -2,6 +2,28 @@
 set -eo pipefail
 #set -x
 
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+key="$1"
+
+case $key in
+    -t|--target)
+    TARGET="$2"
+    shift
+    shift
+    ;;
+    *)
+    POSITIONAL+=("$1")
+    shift
+    ;;
+esac
+done
+
+if [ -z "$TARGET" ]; then
+    TARGET="demonstrations"
+fi
+
 export BRANCH_NAME=${BRANCH_NAME:-"local"}
 export SHORT_SHA=$(date +%Y%m%d-%H%M%S)
 export IMAGE="us-docker.pkg.dev/teknoir/gcr.io/re-identification-system"
@@ -12,7 +34,7 @@ docker buildx build \
   --tag "${IMAGE}:${BRANCH_NAME}-${SHORT_SHA}" \
   .
 
-export NAMESPACE=${NAMESPACE:-"demonstrations"}
+export NAMESPACE=${TARGET}
 
 if [[ $NAMESPACE == "demonstrations" ]] ; then
   CONTEXT="gke_teknoir-poc_us-central1-c_teknoir-dev-cluster"
