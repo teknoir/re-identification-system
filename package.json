@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "test": "node tests/test-enrichAlert.js"
+    "test": ""
   },
   "keywords": [
     "re-identification-system",
