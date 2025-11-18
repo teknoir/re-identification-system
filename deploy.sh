@@ -71,13 +71,14 @@ spec:
           domain: ${DOMAIN}
           image:
             repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
-            tag: feature-line-crossing-cloud-stream-b621bae
+            tag: feature-line-crossing-cloud-stream-9475ab1
           mongodbSecretKeyRef:
             name: re-id-mongo
             key: uri
           serviceAccountName: default-editor
           instructor:
-            model: reid-visual-attribute-3-consolidated-prompt
+            model: projects/815276040543/locations/us-central1/endpoints/1385445124137287680
+            #model: gemini-2.5-flash
             prompt: |
               You are a vision assistant that extracts a compact set of clothing attributes used for re-ID of persons across multiple camera angles.
               Return STRICT JSON ONLY (no prose) including every schema key exactly: one_piece, outerwear, top_wear, bottom_wear, footwear, footwear_color, head_covering, skin_tone,
