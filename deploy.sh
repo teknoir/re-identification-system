@@ -54,7 +54,7 @@ metadata:
 spec:
   repo: https://teknoir.github.io/re-identification-system
   chart: re-identification-system
-  version: 0.0.3
+  version: 0.0.4
   targetNamespace: ${NAMESPACE}
   valuesContent: |-
     basePath: /${NAMESPACE}/re-identification-system
@@ -71,10 +71,7 @@ spec:
           domain: ${DOMAIN}
           image:
             repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
-            tag: feature-line-crossing-cloud-stream-9475ab1
-          mongodbSecretKeyRef:
-            name: re-id-mongo
-            key: uri
+            tag: feature-line-crossing-cloud-stream-2aaf66b
           serviceAccountName: default-editor
           instructor:
             model: projects/815276040543/locations/us-central1/endpoints/1385445124137287680
