@@ -71,8 +71,10 @@ spec:
           domain: ${DOMAIN}
           image:
             repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
-            tag: feature-line-crossing-cloud-stream-2aaf66b
+            tag: feature-line-crossing-cloud-stream-a3d3ec4
           serviceAccountName: default-editor
+          reIdMatchingService:
+            url: http://re-identification-service:80
           instructor:
             model: projects/815276040543/locations/us-central1/endpoints/1385445124137287680
             #model: gemini-2.5-flash
