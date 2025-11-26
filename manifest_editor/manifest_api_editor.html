@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Manifest API Editor</title>
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;margin:0;background:#f5f6fb;color:#111827;}
+    header{background:#0f172a;color:#fff;padding:18px 24px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;}
+    header h1{margin:0;font-size:20px;}
+    main{max-width:1200px;margin:0 auto;padding:20px;}
+    .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 10px 25px rgba(15,23,42,0.08);margin-bottom:16px;}
+    .toolbar{display:flex;flex-direction:column;gap:10px;align-items:flex-start;}
+    .toolbar-group{display:flex;flex-wrap:wrap;gap:12px;align-items:center;}
+    .toolbar label{font-size:13px;display:flex;align-items:center;gap:6px;}
+    .toolbar input[type="checkbox"]{width:13px;height:13px;}
+    label.button{background:#2563eb;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;}
+    label.button input{display:none;}
+    input[type="text"],select{padding:7px 10px;border:1px solid #cbd5f5;border-radius:6px;font-size:13px;}
+    button{padding:7px 12px;border-radius:6px;border:none;font-size:13px;cursor:pointer;background:#334155;color:#fff;}
+    button.secondary{background:#e0e7ff;color:#1e1b4b;}
+    #people{display:flex;flex-direction:column;gap:16px;}
+    .person{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;}
+    .person-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;}
+    .person-head h2{margin:0;font-size:16px;}
+    .alias-input{min-width:160px;padding:5px 8px;border:1px solid #cbd5f5;border-radius:6px;font-size:13px;}
+    .badge{padding:2px 8px;border-radius:999px;font-size:11px;text-transform:uppercase;}
+    .include{background:#dcfce7;color:#166534;}
+    .exclude{background:#fee2e2;color:#b91c1c;}
+    .events{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;}
+    .event-card{border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafcff;}
+    .event-meta{font-size:12px;color:#475569;margin-bottom:6px;}
+    .thumbs{display:flex;flex-wrap:wrap;gap:6px;}
+    .thumb img{width:70px;border-radius:4px;border:1px solid #cbd5f5;transition:transform .12s;}
+    .thumb img:hover{transform:scale(3);z-index:1000;}
+    .controls{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+    .danger{background:#dc2626;color:#fff;}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Manifest API Editor</h1>
+    <div id="status" class="status">No manifest loaded</div>
+  </header>
+  <main>
+    <div class="card toolbar">
+      <div class="toolbar-group">
+        <label>Day <input type="text" id="apiDay" placeholder="YYYY-MM-DD" size="10"></label>
+        <label>Store <input type="text" id="apiStore" placeholder="nc0009" size="10"></label>
+        <label>API base <input type="text" id="apiBase" value="http://0.0.0.0:8080" size="20"></label>
+        <button id="loadApiBtn" type="button">Load manifest</button>
+      </div>
+      <div class="toolbar-group">
+        <select id="cameraFilter"><option value="">All cameras</option></select>
+        <label><input type="checkbox" id="hideExcluded"> Hide excluded</label>
+        <label><input type="checkbox" id="toggleAttrs"> Show attributes</label>
+        <button id="addPerson" type="button">Add person</button>
+        <input type="text" id="search" placeholder="Search person or entry">
+        <button id="deleteEmpties" type="button">Delete empty clusters</button>
+      </div>
+      <div class="toolbar-group">
+        <label><input type="checkbox" id="adjudicatedToggle"> Mark as Complete</label>
+        <button id="saveState" class="secondary" type="button">Save</button>
+      </div>
+    </div>
+    <div id="selectionBar" class="card" style="display:none;">
+      <strong id="selectionCount">0 selected</strong>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+        <select id="selectionTarget"></select>
+        <button id="moveSelected" class="secondary">Move selected</button>
+        <button id="splitSelected" class="secondary">Split selected to new person</button>
+        <button id="clearSelection">Clear</button>
+      </div>
+    </div>
+    <div id="pagerTop" class="card" style="display:flex;align-items:center;gap:8px;">
+      <button id="prevPageTop" type="button">Prev</button>
+      <span id="pagerInfoTop">Page 1/1</span>
+      <button id="nextPageTop" type="button">Next</button>
+      <span id="pagerStatsTop" style="font-size:12px;color:#475569;"></span>
+    </div>
+  <div id="people"></div>
+  <div id="pagerBottom" class="card" style="display:flex;align-items:center;gap:8px;">
+    <button id="prevPageBottom" type="button">Prev</button>
+    <span id="pagerInfoBottom">Page 1/1</span>
+    <button id="nextPageBottom" type="button">Next</button>
+    <span id="pagerStatsBottom" style="font-size:12px;color:#475569;"></span>
+  </div>
+  </main>
+
+  <script>
+    const PAGE_SIZE = 100;
+    const state = { store:"", day:"", people:[], nextId:1, search:"", camera:"", hideExcluded:true, selected:new Set(), showAttrs:false, adjudicated:false, page:1 };
+    const statusEl = document.getElementById("status");
+    const peopleEl = document.getElementById("people");
+    let loadingEl = null;
+
+    function personLabel(person){
+      if(!person) return "";
+      return person.alias ? `${person.person_id} — ${person.alias}` : person.person_id;
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("loadApiBtn").addEventListener("click", loadFromApi);
+      document.getElementById("search").addEventListener("input", e => { state.search = e.target.value.toLowerCase(); state.page = 1; render(); });
+      document.getElementById("cameraFilter").addEventListener("change", e => { state.camera = e.target.value; state.page = 1; render(); });
+      const hideExcludedEl = document.getElementById("hideExcluded");
+      hideExcludedEl.checked = !!state.hideExcluded;
+      hideExcludedEl.addEventListener("change", e => { state.hideExcluded = e.target.checked; state.page = 1; render(); });
+      document.getElementById("toggleAttrs").addEventListener("change", e => { state.showAttrs = e.target.checked; render(); });
+      document.getElementById("addPerson").addEventListener("click", () => addPerson());
+      document.getElementById("deleteEmpties").addEventListener("click", () => deleteEmptyClusters());
+      document.getElementById("saveState").addEventListener("click", () => saveToMongo());
+      document.getElementById("moveSelected").addEventListener("click", () => moveSelected());
+      document.getElementById("splitSelected").addEventListener("click", () => splitSelected());
+      document.getElementById("clearSelection").addEventListener("click", () => { state.selected.clear(); render(); });
+      const adj = document.getElementById("adjudicatedToggle");
+      adj.checked = !!state.adjudicated;
+      adj.addEventListener("change", e => { state.adjudicated = e.target.checked; });
+      document.getElementById("prevPageTop").addEventListener("click", () => changePage(state.page - 1));
+      document.getElementById("nextPageTop").addEventListener("click", () => changePage(state.page + 1));
+      document.getElementById("prevPageBottom").addEventListener("click", () => changePage(state.page - 1));
+      document.getElementById("nextPageBottom").addEventListener("click", () => changePage(state.page + 1));
+    });
+
+    function setStatus(msg){
+      statusEl.textContent = msg;
+    }
+
+    async function loadFromApi(){
+      const dayRaw = document.getElementById('apiDay').value.trim();
+      const store = document.getElementById('apiStore').value.trim();
+      const base = document.getElementById('apiBase').value.trim() || window.location.origin;
+      const day = normalizeDay(dayRaw);
+      if(!day || !store){
+        alert("Enter day and store");
+        return;
+      }
+      setStatus(`Loading ${store}@${day} from ${base}...`);
+      showLoading(true);
+      try{
+        const url = `/api/manifest-proxy?day_id=${encodeURIComponent(day)}&store_id=${encodeURIComponent(store)}&api_base=${encodeURIComponent(base)}`;
+        const resp = await fetch(url);
+        if(!resp.ok){
+          throw new Error(await resp.text() || resp.statusText);
+        }
+        const data = await resp.json();
+        setStatus(`Loaded manifest: ${data.person_count || (data.people||[]).length} people, ${data.event_count || 0} events (${data.source || 'api'})`);
+        applyManifest(
+          {
+            store_id: data.store_id || store,
+            day_id: data.day_id || day,
+            people: data.people || [],
+            adjudicated: data.adjudicated
+          },
+          `${store}@${day} (${data.source || 'api'})`
+        );
+      }catch(err){
+        console.error(err);
+        setStatus(`Load failed: ${err}`);
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    function applyManifest(data, label){
+      const people = Array.isArray(data.people)
+        ? data.people
+        : (data.people ? Object.values(data.people) : (data.persons ? Object.values(data.persons) : []));
+      state.people = people.map(p => ({
+        person_id: p.person_id || p.id || `person_${state.nextId++}`,
+        alias: p.alias || p.note || p.tag || "",
+        first_seen: p.first_seen || "",
+        exclude: !!p.exclude || p.include === false,
+        events: (p.events || p.entries || []).map(ev => ({
+          entry_id: ev.entry_id,
+          alert_id: ev.alert_id,
+          timestamp: ev.timestamp,
+          direction: ev.direction,
+          camera: ev.camera,
+          images: ev.images || [],
+          image_paths: ev._image_paths || ev.images || [],
+          embeddings: ev.embeddings || [],
+          attrs: ev.attrs || {}
+        }))
+      }));
+      state.nextId = state.people.length + 1;
+      state.store = data.store_id || data.store || "";
+      state.day = data.day_id || data.day || "";
+      state.adjudicated = !!data.adjudicated;
+      state.selected = new Set();
+      const adjToggle = document.getElementById("adjudicatedToggle");
+      if(adjToggle){
+        adjToggle.checked = state.adjudicated;
+      }
+      buildCameraFilter();
+      setStatus(`Loaded ${state.people.length} people from ${label || "manifest"}`);
+      state.page = 1;
+      render();
+    }
+
+    function buildCameraFilter(){
+      const set = new Set();
+      state.people.forEach(p => p.events.forEach(ev => { if(ev.camera) set.add(ev.camera); }));
+      const select = document.getElementById("cameraFilter");
+      const current = select.value;
+      select.innerHTML = '<option value="">All cameras</option>';
+      Array.from(set).sort().forEach(cam => {
+        const opt = document.createElement("option");
+        opt.value = cam;
+        opt.textContent = cam;
+        select.appendChild(opt);
+      });
+      if(set.has(current)) select.value = current;
+    }
+
+    function filteredPeople(){
+      return state.people.filter(p => {
+        if(state.hideExcluded && p.exclude) return false;
+        if(state.search){
+          const text = [p.person_id, p.alias || "", ...p.events.map(ev => ev.entry_id)].join(" ").toLowerCase();
+          if(!text.includes(state.search)) return false;
+        }
+        if(state.camera){
+          return p.events.some(ev => ev.camera === state.camera);
+        }
+        return true;
+      });
+    }
+
+    function changePage(newPage){
+      const total = Math.max(1, Math.ceil(filteredPeople().length / PAGE_SIZE));
+      state.page = Math.min(Math.max(1, newPage), total);
+      render();
+    }
+
+    function render(){
+      peopleEl.innerHTML = "";
+      const selectable = state.people.map((p,i)=>({person:p,index:i}));
+      const filtered = filteredPeople();
+      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      if(state.page > totalPages) state.page = totalPages;
+      const start = (state.page - 1) * PAGE_SIZE;
+      const visible = filtered.slice(start, start + PAGE_SIZE);
+      visible.forEach(person => {
+        const idx = state.people.indexOf(person);
+        const card = document.createElement("div");
+        card.className = "person";
+        card.dataset.personId = person.person_id;
+        card.innerHTML = `
+          <div class="person-head">
+            <h2 contenteditable="true" data-idx="${idx}" class="pid">${person.person_id}</h2>
+            <input type="text" class="alias-input" data-idx="${idx}" value="${person.alias || ""}" placeholder="Alias/tag">
+            <span class="badge ${person.exclude?'exclude':'include'}">${person.exclude?'Excluded':'Included'}</span>
+            <span>${person.events.length} events</span>
+            <button class="secondary" data-action="toggle" data-idx="${idx}">${person.exclude?'Include':'Exclude'}</button>
+            <button class="danger" data-action="delete" data-idx="${idx}">Delete (empty only)</button>
+          </div>
+        `;
+        const grid = document.createElement("div");
+        grid.className = "events";
+        person.events.forEach((ev, eidx) => {
+          const evCard = document.createElement("div");
+          evCard.className = "event-card";
+          const checked = state.selected.has(ev.entry_id) ? "checked" : "";
+          evCard.innerHTML = `
+            <div class="event-meta"><strong>${ev.entry_id}</strong><br>${ev.timestamp || "—"} · ${ev.direction || "?"} · ${ev.camera || "?"}</div>
+            <div class="thumbs">${renderThumbs(ev.image_paths)}</div>
+            ${state.showAttrs ? renderAttrs(ev.attrs) : ""}
+            <div class="controls">
+              <label style="margin-right:8px;"><input type="checkbox" data-select="${ev.entry_id}" ${checked}> Select</label>
+              <select data-move="${idx}:${eidx}" ${selectable.length ? "" : "disabled"}>
+                ${
+                  selectable.length
+                    ? selectable.map(({person: p2, index: i}) => `<option value="${i}" ${i===idx?'selected':''}>${personLabel(p2)}</option>`).join("")
+                    : `<option value="">No available targets</option>`
+                }
+              </select>
+              <button class="secondary" data-split="${idx}:${eidx}">Split to new person</button>
+            </div>
+          `;
+        grid.appendChild(evCard);
+      });
+        card.appendChild(grid);
+        peopleEl.appendChild(card);
+      });
+      bindEvents();
+      updateSelectionBar(false);
+      updatePager(filtered.length, totalPages);
+    }
+
+    function bindEvents(){
+      document.querySelectorAll(".person-head .pid").forEach(el => {
+        el.addEventListener("blur", e => {
+          const idx = parseInt(e.target.dataset.idx, 10);
+          state.people[idx].person_id = e.target.textContent.trim() || `person_${idx+1}`;
+        });
+      });
+      document.querySelectorAll(".alias-input").forEach(el => {
+        el.addEventListener("input", e => {
+          const idx = parseInt(e.target.dataset.idx, 10);
+          state.people[idx].alias = e.target.value;
+        });
+      });
+      document.querySelectorAll("[data-action='toggle']").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const idx = parseInt(e.target.dataset.idx,10);
+        state.people[idx].exclude = !state.people[idx].exclude;
+          render();
+        });
+      });
+      document.querySelectorAll("[data-action='delete']").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const idx = parseInt(e.target.dataset.idx,10);
+          if(state.people[idx].events.length){
+            alert("Move events out before deleting this person.");
+            return;
+          }
+          state.people.splice(idx,1);
+          render();
+        });
+      });
+      document.querySelectorAll("[data-select]").forEach(chk => {
+        chk.addEventListener("change", e => {
+          const id = e.target.dataset.select;
+          if(e.target.checked) state.selected.add(id);
+          else state.selected.delete(id);
+          updateSelectionBar(false);
+        });
+      });
+      document.querySelectorAll("[data-move]").forEach(sel => {
+        sel.addEventListener("change", e => {
+          const [pidx, eidx] = e.target.dataset.move.split(":").map(Number);
+          const target = parseInt(e.target.value,10);
+          if(pidx === target) return;
+          const ev = state.people[pidx].events.splice(eidx,1)[0];
+          state.people[target].events.push(ev);
+          render();
+        });
+      });
+      document.querySelectorAll("[data-split]").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const [pidx, eidx] = e.target.dataset.split.split(":").map(Number);
+          const ev = state.people[pidx].events.splice(eidx,1)[0];
+          const pid = `person_new_${state.nextId++}`;
+          state.people.push({person_id: pid, alias:"", first_seen: ev.timestamp, exclude:false, events:[ev]});
+          render();
+        });
+      });
+    }
+
+    function updateSelectionBar(renderAfter=true){
+      const bar = document.getElementById("selectionBar");
+      const count = state.selected.size;
+      bar.style.display = count ? "block" : "none";
+      if(!count) return;
+      document.getElementById("selectionCount").textContent = `${count} selected`;
+      const targetSelect = document.getElementById("selectionTarget");
+      targetSelect.innerHTML = state.people.map((p,i)=>`<option value="${i}">${personLabel(p)}</option>`).join("");
+      if(renderAfter) render();
+    }
+
+    function updatePager(totalFiltered, totalPages){
+      const showing = Math.min(PAGE_SIZE, Math.max(0, totalFiltered - (state.page-1)*PAGE_SIZE));
+      ["Top","Bottom"].forEach(loc => {
+        document.getElementById(`pagerInfo${loc}`).textContent = `Page ${state.page}/${totalPages}`;
+        document.getElementById(`pagerStats${loc}`).textContent = `${totalFiltered} people (showing ${showing})`;
+        document.getElementById(`prevPage${loc}`).disabled = state.page <= 1;
+        document.getElementById(`nextPage${loc}`).disabled = state.page >= totalPages;
+      });
+    }
+
+    function renderThumbs(images){
+      if(!images || !images.length) return "<em>No images</em>";
+      return images.map(uri => `<div class="thumb"><img src="${resolveImage(uri)}"></div>`).join("");
+    }
+
+    function resolveImage(uri){
+      if(!uri) return "";
+      if(uri.startsWith("http") || uri.startsWith("data:")) return uri;
+      return `/api/image?source=${encodeURIComponent(uri)}`;
+    }
+
+    function renderAttrs(attrs){
+      if(!attrs) return "";
+      const entries = Object.entries(attrs).filter(([k,v]) => v !== null && v !== "" && !(Array.isArray(v) && !v.length));
+      if(!entries.length) return "";
+      const rows = entries.map(([k,v]) => {
+        const value = Array.isArray(v) ? v.join(", ") : (typeof v === "object" ? JSON.stringify(v) : String(v));
+        return `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(value)}</div>`;
+      }).join("");
+      return `<div class="attrs">${rows}</div>`;
+    }
+
+    function showLoading(isLoading){
+      if(isLoading){
+        if(!loadingEl){
+          loadingEl = document.createElement('span');
+          loadingEl.textContent = 'Loading...';
+          loadingEl.style.marginLeft = '12px';
+          loadingEl.style.fontSize = '13px';
+          loadingEl.style.color = '#444';
+          statusEl.insertAdjacentElement('afterend', loadingEl);
+        }
+      }else{
+        if(loadingEl){
+          loadingEl.remove();
+          loadingEl = null;
+        }
+      }
+    }
+
+    function normalizeDay(day){
+      if(!day) return day;
+      const parts = day.split('-');
+      if(parts.length !== 3) return day;
+      const [y,m,d] = parts;
+      const mm = m.padStart(2,'0');
+      const dd = d.padStart(2,'0');
+      return `${y}-${mm}-${dd}`;
+    }
+
+    function escapeHtml(str){
+      return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+
+    function deleteEmptyClusters(){
+      const empty = state.people.filter(p => !p.events.length);
+      if(!empty.length){
+        setStatus("No empty clusters to delete");
+        return;
+      }
+      state.people = state.people.filter(p => p.events.length);
+      setStatus(`Removed ${empty.length} empty clusters`);
+      render();
+    }
+
+    async function saveToMongo(){
+      if(!state.people.length){
+        alert("Load a manifest first");
+        return;
+      }
+      const emptyCnt = state.people.filter(p => !p.events.length).length;
+      if(emptyCnt){
+        const ok = confirm(`You have ${emptyCnt} empty clusters. Delete them before saving? (They will be dropped automatically if you click OK)`);
+        if(ok){
+          state.people = state.people.filter(p => p.events.length);
+          render();
+        }
+      }
+      setStatus("Saving...");
+      try{
+        const payload = {
+          store_id: state.store,
+          day_id: state.day,
+          people: state.people,
+          adjudicated: state.adjudicated
+        };
+        const resp = await fetch("/api/editor-state", {
+          method:"POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify(payload)
+        });
+        if(!resp.ok){
+          throw new Error(await resp.text() || resp.statusText);
+        }
+        setStatus("Saved");
+      }catch(err){
+        console.error(err);
+        setStatus(`Save failed: ${err}`);
+      }
+    }
+
+    function moveSelected(){
+      const selectEl = document.getElementById("selectionTarget");
+      const targetIdx = parseInt(selectEl.value,10);
+      if(Number.isNaN(targetIdx)) return;
+      const locations = selectedLocations().sort((a,b)=> (b.pidx-a.pidx)||(b.eidx-a.eidx));
+      locations.forEach(({pidx,eidx}) => {
+        if(pidx === targetIdx) return;
+        const ev = state.people[pidx].events.splice(eidx,1)[0];
+        state.people[targetIdx].events.push(ev);
+      });
+      state.selected.clear();
+      render();
+    }
+
+    function splitSelected(){
+      const locations = selectedLocations().sort((a,b)=> (b.pidx-a.pidx)||(b.eidx-a.eidx));
+      if(!locations.length) return;
+      locations.forEach(({pidx,eidx}) => {
+        const ev = state.people[pidx].events.splice(eidx,1)[0];
+        const pid = `person_new_${state.nextId++}`;
+        state.people.push({person_id: pid, alias:"", first_seen: ev.timestamp, exclude:false, events:[ev]});
+      });
+      state.selected.clear();
+      render();
+    }
+
+    function findEntry(entryId){
+      for(let pidx=0;pidx<state.people.length;pidx++){
+        const events = state.people[pidx].events;
+        for(let eidx=0;eidx<events.length;eidx++){
+          if(events[eidx].entry_id === entryId){
+            return {pidx,eidx};
+          }
+        }
+      }
+      return null;
+    }
+
+    function selectedLocations(){
+      return Array.from(state.selected).map(findEntry).filter(Boolean);
+    }
+
+    function init(){
+      setStatus("Ready. Load from API or file, edit, then Save.");
+    }
+    init();
+  </script>
+</body>
+</html>

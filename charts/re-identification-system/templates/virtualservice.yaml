@@ -11,6 +11,22 @@ spec:
   http:
     - match:
         - uri:
+            prefix: /re-identification-system/matching-service
+      route:
+        - destination:
+            host: matching-service.{{ .Release.Namespace }}.svc.cluster.local
+            port:
+              number: 80
+    - match:
+        - uri:
+            prefix: /re-identification-system/manifest-editor
+      route:
+        - destination:
+            host: manifest-editor.{{ .Release.Namespace }}.svc.cluster.local
+            port:
+              number: 80
+    - match:
+        - uri:
             prefix: {{ .Values.basePath | quote }}
       route:
         - destination:

@@ -1,0 +1,379 @@
+{
+  "schema_id": "person_attrs.v1",
+  "fields": [
+    {
+      "name": "one_piece",
+      "type": "enum",
+      "values": [
+        "dress",
+        "jumpsuit",
+        "romper",
+        "coverall",
+        "none",
+        "unknown"
+      ]
+    },
+    {
+      "name": "outerwear",
+      "type": "enum",
+      "values": [
+        "jacket",
+        "coat",
+        "hoodie",
+        "vest",
+        "sweater",
+        "none",
+        "unknown"
+      ]
+    },
+    {
+      "name": "top_wear",
+      "type": "enum",
+      "values": [
+        "t-shirt",
+        "shirt",
+        "blouse",
+        "sweater",
+        "hoodie",
+        "polo",
+        "none",
+        "unknown"
+      ]
+    },
+    {
+      "name": "bottom_wear",
+      "type": "enum",
+      "values": [
+        "pants",
+        "jeans",
+        "shorts",
+        "skirt",
+        "none",
+        "unknown"
+      ]
+    },
+    {
+      "name": "footwear",
+      "type": "enum",
+      "values": [
+        "athletic shoes",
+        "boots",
+        "dress shoes",
+        "sandals",
+        "unknown"
+      ]
+    },
+    {
+      "name": "footwear_color",
+      "type": "enum",
+      "values": [
+        "black",
+        "white",
+        "gray",
+        "brown",
+        "red",
+        "blue",
+        "green",
+        "yellow",
+        "multicolor",
+        "unknown"
+      ]
+    },
+    {
+      "name": "head_covering",
+      "type": "enum",
+      "values": [
+        "cap",
+        "beanie",
+        "hat",
+        "hoodie",
+        "none",
+        "unknown"
+      ]
+    },
+    {
+      "name": "skin_tone",
+      "type": "enum",
+      "values": [
+        "light",
+        "medium",
+        "dark",
+        "unknown"
+      ]
+    },
+    {
+      "name": "outerwear_color",
+      "type": "enum",
+      "values": [
+        "black",
+        "white",
+        "gray",
+        "brown",
+        "red",
+        "blue",
+        "green",
+        "yellow",
+        "multicolor",
+        "unknown"
+      ]
+    },
+    {
+      "name": "top_wear_color",
+      "type": "enum",
+      "values": [
+        "black",
+        "white",
+        "gray",
+        "brown",
+        "red",
+        "blue",
+        "green",
+        "yellow",
+        "multicolor",
+        "unknown"
+      ]
+    },
+    {
+      "name": "bottom_wear_color",
+      "type": "enum",
+      "values": [
+        "black",
+        "white",
+        "gray",
+        "brown",
+        "red",
+        "blue",
+        "green",
+        "yellow",
+        "multicolor",
+        "unknown"
+      ]
+    },
+    {
+      "name": "head_covering_color",
+      "type": "enum",
+      "values": [
+        "black",
+        "white",
+        "gray",
+        "brown",
+        "red",
+        "blue",
+        "green",
+        "yellow",
+        "multicolor",
+        "unknown"
+      ]
+    },
+    {
+      "name": "one_piece_color",
+      "type": "enum",
+      "values": [
+        "black",
+        "white",
+        "gray",
+        "brown",
+        "red",
+        "blue",
+        "green",
+        "yellow",
+        "multicolor",
+        "unknown"
+      ]
+    },
+    {
+      "name": "outerwear_pattern",
+      "type": "enum",
+      "values": [
+        "plain",
+        "patterned",
+        "logo_writing",
+        "unknown"
+      ]
+    },
+    {
+      "name": "top_wear_pattern",
+      "type": "enum",
+      "values": [
+        "plain",
+        "patterned",
+        "logo_writing",
+        "unknown"
+      ]
+    },
+    {
+      "name": "bottom_wear_pattern",
+      "type": "enum",
+      "values": [
+        "plain",
+        "patterned",
+        "logo_writing",
+        "unknown"
+      ]
+    },
+    {
+      "name": "head_covering_pattern",
+      "type": "enum",
+      "values": [
+        "plain",
+        "patterned",
+        "logo_writing",
+        "unknown"
+      ]
+    },
+    {
+      "name": "one_piece_pattern",
+      "type": "enum",
+      "values": [
+        "plain",
+        "patterned",
+        "logo_writing",
+        "unknown"
+      ]
+    },
+    {
+      "name": "one_piece_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "outerwear_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "top_wear_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "bottom_wear_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "footwear_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "footwear_color_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "head_covering_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "skin_tone_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "outerwear_color_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "top_wear_color_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "bottom_wear_color_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "head_covering_color_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "one_piece_color_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "outerwear_pattern_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "top_wear_pattern_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "bottom_wear_pattern_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "head_covering_pattern_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "one_piece_pattern_confidence",
+      "type": "float",
+      "range": [
+        0.0,
+        1.0
+      ]
+    }
+  ]
+}

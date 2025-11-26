@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Manifest Cluster Editor</title>
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;margin:0;background:#f5f6fb;color:#111827;}
+    header{background:#0f172a;color:#fff;padding:18px 24px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;}
+    header h1{margin:0;font-size:20px;}
+    header .status{font-size:13px;color:#cbd5f5;}
+    main{max-width:1200px;margin:0 auto;padding:20px;}
+    .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 10px 25px rgba(15,23,42,0.08);margin-bottom:16px;}
+    .toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;}
+    label.button{background:#2563eb;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;}
+    label.button input{display:none;}
+    input[type="text"],select{padding:7px 10px;border:1px solid #cbd5f5;border-radius:6px;font-size:13px;}
+    button{padding:7px 12px;border-radius:6px;border:none;font-size:13px;cursor:pointer;background:#334155;color:#fff;}
+    button.secondary{background:#e0e7ff;color:#1e1b4b;}
+    #people{display:flex;flex-direction:column;gap:16px;}
+    .person{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;}
+    .person-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;}
+    .alias-input{min-width:160px;padding:5px 8px;border:1px solid #cbd5f5;border-radius:6px;font-size:13px;}
+    .person-head h2{margin:0;font-size:16px;}
+    .badge{padding:2px 8px;border-radius:999px;font-size:11px;text-transform:uppercase;}
+    .include{background:#dcfce7;color:#166534;}
+    .exclude{background:#fee2e2;color:#b91c1c;}
+    .events{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;}
+    .event-card{border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafcff;}
+    .event-meta{font-size:12px;color:#475569;margin-bottom:6px;}
+    .thumbs{display:flex;flex-wrap:wrap;gap:6px;}
+    .thumb{display:inline-flex;}
+    .thumb img{width:70px;border-radius:4px;border:1px solid #cbd5f5;transition:transform .12s;}
+    .thumb img:hover{transform:scale(3);z-index:1000;}
+    .controls{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+    .danger{background:#dc2626;color:#fff;}
+    .attrs{margin-top:6px;font-size:12px;color:#1f2937;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:4px;}
+    .attrs div{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:4px 6px;}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Manifest Cluster Editor</h1>
+    <div id="status" class="status">No manifest loaded</div>
+  </header>
+  <main>
+    <div class="card toolbar">
+      <label class="button">Load local manifest<input type="file" id="manifestFile" accept="application/json"></label>
+      <input type="text" id="sourceInput" placeholder="gs://bucket/path/to/manifest.json or /path/on/disk" size="40">
+      <button id="loadSourceBtn">Load source</button>
+      <input type="text" id="search" placeholder="Search person or entry">
+      <select id="cameraFilter"><option value="">All cameras</option></select>
+      <label><input type="checkbox" id="hideExcluded"> Hide excluded</label>
+      <label><input type="checkbox" id="toggleAttrs"> Show attributes</label>
+      <button id="addPerson">Add person</button>
+      <button id="deleteEmpties">Delete empty clusters</button>
+      <button id="loadState">Load saved progress</button>
+      <button class="secondary" id="saveState">Save progress</button>
+      <button class="secondary" id="exportGT">Download multicluster_gt.json</button>
+      <button class="secondary" id="exportManifest">Download entry_manifest.json</button>
+    </div>
+  <div id="selectionBar" class="card" style="display:none;">
+    <strong id="selectionCount">0 selected</strong>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+      <select id="selectionTarget"></select>
+      <button id="moveSelected" class="secondary">Move selected</button>
+      <button id="splitSelected" class="secondary">Split selected to new person</button>
+      <button id="clearSelection">Clear</button>
+    </div>
+  </div>
+  <div id="people"></div>
+  </main>
+
+  <script>
+    const state = { store:"", day:"", people:[], nextId:1, search:"", camera:"", hideExcluded:false, selected:new Set(), showAttrs:false };
+    let pendingScrollAnchor = null;
+    const statusEl = document.getElementById("status");
+    const peopleEl = document.getElementById("people");
+
+    console.log("[manifest] viewer loaded, location=", window.location.href);
+
+    function personLabel(person){
+      if(!person) return "";
+      return person.alias ? `${person.person_id} — ${person.alias}` : person.person_id;
+    }
+
+    function selectablePeople(){
+      return state.people
+        .map((person, index) => ({person, index}))
+        .filter(({person}) => !person.exclude);
+    }
+
+    document.getElementById("manifestFile").addEventListener("change", e => {
+      const file = e.target.files[0];
+      if(!file) return;
+      console.log("[manifest] uploading file", file.name, file.size);
+      uploadManifest(file);
+    });
+    document.getElementById("loadSourceBtn").addEventListener("click", () => {
+      const src = document.getElementById("sourceInput").value.trim();
+      if(!src) return alert("Enter a source path or gs:// URI.");
+      loadFromSource(src);
+    });
+    document.getElementById("search").addEventListener("input", e => { state.search = e.target.value.toLowerCase(); render(); });
+    document.getElementById("cameraFilter").addEventListener("change", e => { state.camera = e.target.value; render(); });
+    document.getElementById("hideExcluded").addEventListener("change", e => { state.hideExcluded = e.target.checked; render(); });
+    document.getElementById("toggleAttrs").addEventListener("change", e => { state.showAttrs = e.target.checked; render(); });
+    document.getElementById("addPerson").addEventListener("click", () => addPerson());
+    document.getElementById("deleteEmpties").addEventListener("click", () => deleteEmptyClusters());
+    document.getElementById("loadState").addEventListener("click", () => loadSavedProgress());
+    document.getElementById("saveState").addEventListener("click", () => saveProgress());
+    document.getElementById("exportGT").addEventListener("click", () => downloadJSON("multicluster_gt.json", buildGT()));
+    document.getElementById("exportManifest").addEventListener("click", () => downloadJSON("entry_manifest.json", buildEntryManifest()));
+    document.getElementById("moveSelected").addEventListener("click", () => moveSelected());
+    document.getElementById("splitSelected").addEventListener("click", () => splitSelected());
+    document.getElementById("clearSelection").addEventListener("click", () => { state.selected.clear(); render(); });
+
+    async function uploadManifest(file){
+      const fd = new FormData();
+      fd.append("file", file);
+      try{
+        setStatus(`Uploading ${file.name}...`);
+        console.log("[manifest] POST /api/manifest/upload");
+        const resp = await fetch("/api/manifest/upload", {method:"POST", body:fd});
+        if(!resp.ok){
+          const text = await resp.text();
+          console.error("[manifest] upload failed", resp.status, text);
+          throw new Error(text || resp.statusText);
+        }
+        const manifest = await resp.json();
+        applyManifest(manifest, file.name);
+      }catch(err){
+        setStatus(`Upload failed: ${err}`);
+        console.error("[manifest] upload error", err);
+      }
+    }
+
+    async function loadFromSource(source){
+      try{
+        setStatus(`Loading ${source}...`);
+        console.log("[manifest] POST /api/manifest/from-source", source);
+        const resp = await fetch("/api/manifest/from-source", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({source})
+        });
+        if(!resp.ok){
+          const text = await resp.text();
+          console.error("[manifest] load failed", resp.status, text);
+          throw new Error(text || resp.statusText);
+        }
+        const manifest = await resp.json();
+        applyManifest(manifest, source);
+      }catch(err){
+        setStatus(`Load failed: ${err}`);
+        console.error("[manifest] load error", err);
+      }
+    }
+
+    async function loadSavedProgress(silent=false){
+      try{
+        if(!silent) setStatus("Loading saved progress...");
+        const resp = await fetch("/api/editor-state");
+        if(!resp.ok){
+          const text = await resp.text();
+          throw new Error(text || resp.statusText);
+        }
+        const data = await resp.json();
+        if(!data.ok || !data.state){
+          if(!silent) setStatus("No saved progress found");
+          return;
+        }
+        applySavedState(data.state, silent);
+      }catch(err){
+        if(!silent) setStatus(`Load saved progress failed: ${err}`);
+        console.error("[manifest] load saved state error", err);
+      }
+    }
+
+    async function saveProgress(){
+      if(!state.people.length){
+        alert("Load or build a manifest before saving progress.");
+        return;
+      }
+      try{
+        const snapshot = snapshotState();
+        setStatus("Saving progress...");
+        const resp = await fetch("/api/editor-state", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify(snapshot)
+        });
+        if(!resp.ok){
+          const text = await resp.text();
+          throw new Error(text || resp.statusText);
+        }
+        setStatus("Progress saved.");
+      }catch(err){
+        setStatus(`Save failed: ${err}`);
+        console.error("[manifest] save state error", err);
+      }
+    }
+
+    function snapshotState(){
+      const payload = {
+        store_id: state.store,
+        day_id: state.day,
+        nextId: state.nextId,
+        people: state.people
+      };
+      return JSON.parse(JSON.stringify(payload));
+    }
+
+    function applySavedState(saved, silent=false){
+      if(!saved || !Array.isArray(saved.people)){
+        if(!silent) setStatus("Saved progress missing people list.");
+        return;
+      }
+      const prevStatus = statusEl.textContent;
+      applyManifest(
+        {
+          store_id: saved.store_id || saved.store,
+          day_id: saved.day_id || saved.day,
+          people: saved.people
+        },
+        saved.label || "saved progress"
+      );
+      state.nextId = saved.nextId || state.people.length + 1;
+      if(silent){
+        statusEl.textContent = prevStatus;
+      }else{
+        setStatus(`Restored ${state.people.length} people from saved progress`);
+      }
+    }
+
+    function applyManifest(data, label){
+      const people = Array.isArray(data.people)
+        ? data.people
+        : (data.people ? Object.values(data.people) : (data.persons ? Object.values(data.persons) : []));
+      state.people = people.map(p => ({
+        person_id: p.person_id || p.id || `person_${state.nextId++}`,
+        alias: p.alias || p.note || p.tag || "",
+        first_seen: p.first_seen || "",
+        exclude: !!p.exclude,
+        events: (p.events || p.entries || []).map(ev => ({
+          entry_id: ev.entry_id,
+          alert_id: ev.alert_id,
+          timestamp: ev.timestamp,
+          direction: ev.direction,
+          camera: ev.camera,
+          images: ev.images || [],
+          image_paths: ev._image_paths || ev.images || [],
+          embeddings: ev.embeddings || [],
+          attrs: ev.attrs || {}
+        }))
+      }));
+      state.nextId = state.people.length + 1;
+      state.store = data.store_id || data.store || "";
+      state.day = data.day_id || data.day || "";
+      state.selected = new Set();
+      buildCameraFilter();
+      setStatus(`Loaded ${state.people.length} people from ${label || "manifest"}`);
+      render();
+    }
+
+    function setStatus(msg){
+      statusEl.textContent = msg;
+    }
+
+    function addPerson(){
+      const pid = `person_new_${state.nextId++}`;
+      state.people.push({person_id: pid, alias:"", first_seen:"", exclude:false, events:[]});
+      render();
+    }
+
+    function buildCameraFilter(){
+      const set = new Set();
+      state.people.forEach(p => p.events.forEach(ev => { if(ev.camera) set.add(ev.camera); }));
+      const select = document.getElementById("cameraFilter");
+      const current = select.value;
+      select.innerHTML = '<option value="">All cameras</option>';
+      Array.from(set).sort().forEach(cam => {
+        const opt = document.createElement("option");
+        opt.value = cam;
+        opt.textContent = cam;
+        select.appendChild(opt);
+      });
+      if(set.has(current)) select.value = current;
+    }
+
+    function filteredPeople(){
+      return state.people.filter(p => {
+        if(state.hideExcluded && p.exclude) return false;
+        if(state.search){
+          const text = [p.person_id, p.alias || "", ...p.events.map(ev => ev.entry_id)].join(" ").toLowerCase();
+          if(!text.includes(state.search)) return false;
+        }
+        if(state.camera){
+          return p.events.some(ev => ev.camera === state.camera);
+        }
+        return true;
+      });
+    }
+
+    function logAnchor(prefix, anchor){
+      console.log(`[manifest] ${prefix}`, anchor);
+    }
+
+    function setPendingAnchorByPersonId(pid){
+      if(!pid) return;
+      const el = document.querySelector(`.person[data-person-id="${pid}"]`);
+      if(el){
+        const rect = el.getBoundingClientRect();
+        pendingScrollAnchor = {personId: pid, offsetFromTop: rect.top, reason: "personId"};
+      }else{
+        pendingScrollAnchor = {personId: pid, offsetFromTop: 0, scrollTop: window.scrollY || document.documentElement.scrollTop || 0, reason: "personId-miss"};
+      }
+      logAnchor("set anchor by pid", pendingScrollAnchor);
+    }
+
+    function setPendingAnchorByElement(el){
+      if(!el) return;
+      const rect = el.getBoundingClientRect();
+      pendingScrollAnchor = {
+        personId: el.dataset.personId || el.querySelector(".pid")?.textContent?.trim() || "",
+        offsetFromTop: rect.top,
+        scrollTop: window.scrollY || document.documentElement.scrollTop || 0,
+        reason: "element"
+      };
+      logAnchor("set anchor by element", pendingScrollAnchor);
+    }
+
+    function getScrollAnchor(){
+      const active = document.activeElement?.closest?.(".person");
+      if(active){
+        const rect = active.getBoundingClientRect();
+        return {
+          personId: active.dataset.personId || "",
+          offsetFromTop: rect.top,
+          scrollTop: window.scrollY || document.documentElement.scrollTop || 0,
+          reason: "active"
+        };
+      }
+      const cards = Array.from(document.querySelectorAll(".person"));
+      const anchor = cards.find(card => {
+        const rect = card.getBoundingClientRect();
+        return rect.bottom > 0;
+      });
+      if(!anchor){
+        return {scrollTop: window.scrollY || document.documentElement.scrollTop || 0, reason: "fallback"};
+      }
+      const rect = anchor.getBoundingClientRect();
+      return {
+        personId: anchor.dataset.personId || "",
+        offsetFromTop: rect.top,
+        scrollTop: window.scrollY || document.documentElement.scrollTop || 0,
+        reason: "visible"
+      };
+    }
+
+    function restoreScrollAnchor(anchor){
+      if(!anchor) return;
+      requestAnimationFrame(() => {
+        if(anchor.personId){
+          const target = document.querySelector(`.person[data-person-id="${anchor.personId}"]`);
+          if(target){
+            const rect = target.getBoundingClientRect();
+            const delta = rect.top - (anchor.offsetFromTop || 0);
+            if(Math.abs(delta) > 1){
+              window.scrollBy({top: delta, behavior:"auto"});
+              return;
+            }
+          }
+        }
+        window.scrollTo({top: anchor.scrollTop || 0, behavior:"auto"});
+      });
+    }
+
+    function render(){
+      const scrollAnchor = pendingScrollAnchor || getScrollAnchor();
+      pendingScrollAnchor = null;
+      logAnchor("scroll anchor before render", scrollAnchor);
+      updateSelectionBar(false);
+      peopleEl.innerHTML = "";
+      const selectable = selectablePeople();
+      filteredPeople().forEach(person => {
+        const idx = state.people.indexOf(person);
+        const card = document.createElement("div");
+        card.className = "person";
+        card.dataset.personId = person.person_id;
+        card.innerHTML = `
+          <div class="person-head">
+            <h2 contenteditable="true" data-idx="${idx}" class="pid">${person.person_id}</h2>
+            <input type="text" class="alias-input" data-idx="${idx}" value="${person.alias || ""}" placeholder="Alias/tag">
+            <span class="badge ${person.exclude?'exclude':'include'}">${person.exclude?'Excluded':'Included'}</span>
+            <span>${person.events.length} events</span>
+            <button class="secondary" data-action="toggle" data-idx="${idx}">${person.exclude?'Include':'Exclude'}</button>
+            <button class="danger" data-action="delete" data-idx="${idx}">Delete (empty only)</button>
+          </div>
+        `;
+        const grid = document.createElement("div");
+        grid.className = "events";
+        person.events.forEach((ev, eidx) => {
+          const evCard = document.createElement("div");
+          evCard.className = "event-card";
+          const checked = state.selected.has(ev.entry_id) ? "checked" : "";
+          const attrsHtml = state.showAttrs ? renderAttrs(ev.attrs) : "";
+          evCard.innerHTML = `
+            <div class="event-meta"><strong>${ev.entry_id}</strong><br>${ev.timestamp || "—"} · ${ev.direction || "?"} · ${ev.camera || "?"}</div>
+            <div class="thumbs">${renderThumbs(ev.image_paths)}</div>
+            ${attrsHtml}
+            <div class="controls">
+              <label style="margin-right:8px;"><input type="checkbox" data-select="${ev.entry_id}" ${checked}> Select</label>
+              <select data-move="${idx}:${eidx}" ${selectable.length ? "" : "disabled"}>
+                ${
+                  selectable.length
+                    ? selectable.map(({person: p2, index: i}) => `<option value="${i}" ${i===idx?'selected':''}>${personLabel(p2)}</option>`).join("")
+                    : `<option value="">No available targets</option>`
+                }
+              </select>
+              <button class="secondary" data-split="${idx}:${eidx}">Split to new person</button>
+            </div>
+          `;
+          grid.appendChild(evCard);
+        });
+        card.appendChild(grid);
+        peopleEl.appendChild(card);
+      });
+      bindEvents();
+      setupObserver();
+      restoreScrollAnchor(scrollAnchor);
+      console.log("[manifest] scroll state after render", {scrollY: window.scrollY || document.documentElement.scrollTop || 0, anchor: scrollAnchor});
+    }
+
+    function bindEvents(){
+      document.querySelectorAll(".person-head .pid").forEach(el => {
+        el.addEventListener("blur", e => {
+          const idx = parseInt(e.target.dataset.idx, 10);
+          state.people[idx].person_id = e.target.textContent.trim() || `person_${idx+1}`;
+        });
+      });
+      document.querySelectorAll(".alias-input").forEach(el => {
+        el.addEventListener("input", e => {
+          const idx = parseInt(e.target.dataset.idx, 10);
+          state.people[idx].alias = e.target.value;
+        });
+        el.addEventListener("blur", e => {
+          const idx = parseInt(e.target.dataset.idx, 10);
+          state.people[idx].alias = e.target.value.trim();
+          setPendingAnchorByElement(e.target.closest(".person"));
+          render();
+        });
+      });
+      document.querySelectorAll("[data-action='toggle']").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const idx = parseInt(e.target.dataset.idx,10);
+          const person = state.people[idx];
+          const currentPid = person?.person_id;
+          const visible = filteredPeople();
+          const visIdx = visible.indexOf(person);
+          let anchorPid = currentPid;
+          if(state.hideExcluded && !person.exclude && visIdx !== -1){
+            anchorPid = visible[visIdx+1]?.person_id || visible[visIdx-1]?.person_id || currentPid;
+          }
+          setPendingAnchorByPersonId(anchorPid);
+          state.people[idx].exclude = !state.people[idx].exclude;
+          render();
+        });
+      });
+      document.querySelectorAll("[data-action='delete']").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const idx = parseInt(e.target.dataset.idx,10);
+          if(state.people[idx].events.length){
+            alert("Move events out before deleting this person.");
+            return;
+          }
+          const person = state.people[idx];
+          const visible = filteredPeople();
+          const visIdx = visible.indexOf(person);
+          let anchorPid = null;
+          if(visIdx !== -1){
+            anchorPid = visible[visIdx+1]?.person_id || visible[visIdx-1]?.person_id || null;
+          }
+          if(!anchorPid){
+            anchorPid = state.people[idx+1]?.person_id || state.people[idx-1]?.person_id || null;
+          }
+          if(anchorPid) setPendingAnchorByPersonId(anchorPid);
+          state.people.splice(idx,1);
+          render();
+        });
+      });
+      document.querySelectorAll("[data-select]").forEach(chk => {
+        chk.addEventListener("change", e => {
+          const id = e.target.dataset.select;
+          if(e.target.checked) state.selected.add(id);
+          else state.selected.delete(id);
+          updateSelectionBar(false);
+        });
+      });
+      document.querySelectorAll("[data-move]").forEach(sel => {
+        sel.addEventListener("change", e => {
+          const [pidx, eidx] = e.target.dataset.move.split(":").map(Number);
+          const target = parseInt(e.target.value,10);
+          if(pidx === target) return;
+          setPendingAnchorByPersonId(state.people[pidx]?.person_id);
+          const ev = state.people[pidx].events.splice(eidx,1)[0];
+          state.people[target].events.push(ev);
+          render();
+        });
+      });
+      document.querySelectorAll("[data-split]").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const [pidx, eidx] = e.target.dataset.split.split(":").map(Number);
+          setPendingAnchorByElement(document.querySelector(`.person[data-person-id="${state.people[pidx]?.person_id}"]`));
+          const ev = state.people[pidx].events.splice(eidx,1)[0];
+          const pid = `person_new_${state.nextId++}`;
+          state.people.push({person_id: pid, alias:"", first_seen: ev.timestamp, exclude:false, events:[ev]});
+          render();
+        });
+      });
+    }
+
+    function renderThumbs(images){
+      if(!images || !images.length) return "<em>No images</em>";
+      return images.map(uri => `<div class="thumb"><img data-src="${resolveImage(uri)}" class="lazy-thumb"></div>`).join("");
+    }
+
+    function renderAttrs(attrs){
+      if(!attrs) return "";
+      const entries = Object.entries(attrs).filter(([k,v]) => v !== null && v !== "" && !(Array.isArray(v) && !v.length));
+      if(!entries.length) return "";
+      const rows = entries.map(([k,v]) => {
+        const value = Array.isArray(v) ? v.join(", ") : (typeof v === "object" ? JSON.stringify(v) : String(v));
+        return `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(value)}</div>`;
+      }).join("");
+      return `<div class="attrs">${rows}</div>`;
+    }
+
+    function escapeHtml(str){
+      return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+
+    function resolveImage(uri){
+      if(uri && (uri.startsWith("data:") || uri.startsWith("http"))) return uri;
+      return `/api/image?source=${encodeURIComponent(uri)}`;
+    }
+
+    let thumbObserver = null;
+
+    function filteredPeopleForExport(){
+      return state.people.filter(p => !p.exclude && p.events.length);
+    }
+
+function buildGT(){
+      const out = {store_id: state.store, day_id: state.day, persons: {}};
+      filteredPeopleForExport().forEach(p => {
+        out.persons[p.person_id] = {
+          "alias": p.alias || "",
+          first_seen: p.first_seen,
+          entries: p.events.map(ev => ({
+            entry_id: ev.entry_id,
+            alert_id: ev.alert_id,
+            store_id: state.store,
+            day_id: state.day,
+            camera: ev.camera,
+            timestamp: ev.timestamp,
+            direction: ev.direction,
+            images: ev.image_paths || [],
+            embeddings: ev.embeddings,
+            attrs: ev.attrs
+          }))
+        };
+      });
+      return out;
+    }
+
+function buildEntryManifest(){
+      const out = {};
+      filteredPeopleForExport().forEach(p => {
+        p.events.forEach(ev => {
+          out[ev.entry_id] = {
+            store_id: state.store,
+            day_id: state.day,
+            camera: ev.camera,
+            timestamp: ev.timestamp,
+            direction: ev.direction,
+            alert_id: ev.alert_id,
+            images: ev.image_paths || [],
+            embeddings: ev.embeddings,
+            attrs: ev.attrs
+          };
+        });
+      });
+      return out;
+    }
+
+    function downloadJSON(filename, data){
+      const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function updateSelectionBar(renderAfter=true){
+      const bar = document.getElementById("selectionBar");
+      const count = state.selected.size;
+      bar.style.display = count ? "block" : "none";
+      if(!count) return;
+      document.getElementById("selectionCount").textContent = `${count} selected`;
+      const targetSelect = document.getElementById("selectionTarget");
+      const selectable = selectablePeople();
+      targetSelect.innerHTML = selectable.length
+        ? selectable.map(({person,index})=>`<option value="${index}">${personLabel(person)}</option>`).join("")
+        : `<option value="">No available targets</option>`;
+      targetSelect.disabled = selectable.length === 0;
+      if(renderAfter) render();
+    }
+
+    function setupObserver(){
+      if(thumbObserver) thumbObserver.disconnect();
+      thumbObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if(entry.isIntersecting){
+            const img = entry.target;
+            const src = img.getAttribute("data-src");
+            if(src){
+              img.src = src;
+              img.removeAttribute("data-src");
+            }
+            thumbObserver.unobserve(img);
+          }
+        });
+      }, {rootMargin:"200px"});
+      document.querySelectorAll(".lazy-thumb").forEach(img => thumbObserver.observe(img));
+    }
+
+    function findEntry(entryId){
+      for(let pidx=0;pidx<state.people.length;pidx++){
+        const events = state.people[pidx].events;
+        for(let eidx=0;eidx<events.length;eidx++){
+          if(events[eidx].entry_id === entryId){
+            return {pidx,eidx};
+          }
+        }
+      }
+      return null;
+    }
+
+    function selectedLocations(){
+      return Array.from(state.selected).map(findEntry).filter(Boolean);
+    }
+
+    function moveSelected(){
+      const selectEl = document.getElementById("selectionTarget");
+      const targetIdx = parseInt(selectEl.value,10);
+      if(Number.isNaN(targetIdx)) return;
+      const locations = selectedLocations().sort((a,b)=> (b.pidx-a.pidx)||(b.eidx-a.eidx));
+      locations.forEach(({pidx,eidx}) => {
+        if(pidx === targetIdx) return;
+        const ev = state.people[pidx].events.splice(eidx,1)[0];
+        state.people[targetIdx].events.push(ev);
+      });
+      setPendingAnchorByPersonId(state.people[targetIdx]?.person_id);
+      state.selected.clear();
+      render();
+    }
+
+    function splitSelected(){
+      const locations = selectedLocations().sort((a,b)=> (b.pidx-a.pidx)||(b.eidx-a.eidx));
+      if(!locations.length) return;
+      setPendingAnchorByPersonId(state.people[locations[0].pidx]?.person_id);
+      locations.forEach(({pidx,eidx}) => {
+        const ev = state.people[pidx].events.splice(eidx,1)[0];
+        const pid = `person_new_${state.nextId++}`;
+        state.people.push({person_id: pid, alias:"", first_seen: ev.timestamp, exclude:false, events:[ev]});
+      });
+      state.selected.clear();
+      render();
+    }
+
+    function deleteEmptyClusters(){
+      const empty = state.people.filter(p => !p.events.length);
+      if(!empty.length){
+        setStatus("No empty clusters to delete");
+        return;
+      }
+      state.people = state.people.filter(p => p.events.length);
+      setStatus(`Removed ${empty.length} empty clusters`);
+      render();
+    }
+
+    loadSavedProgress(true);
+  </script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+name: matching-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      application: matching-service
+  template:
+    metadata:
+      labels:
+        application: matching-service
+    spec:
+      containers:
+        - name: matching-service
+          image: "{{ .Values.matchingService.image.repository }}:{{ .Values.matchingService.image.tag }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: re-id-mongo
+                  key: uri
+            - name: MODEL_CKPT
+              value: model.pt
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1
+              memory: 2Gi

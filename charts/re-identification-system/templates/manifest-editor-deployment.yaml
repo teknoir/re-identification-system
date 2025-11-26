@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+name: manifest-editor
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      application: manifest-editor
+  template:
+    metadata:
+      labels:
+        application: manifest-editor
+    spec:
+      containers:
+        - name: manifest-editor
+          image: "{{ .Values.manifestEditor.image.repository }}:{{ .Values.manifestEditor.image.tag }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: MANIFEST_EDITOR_MONGO
+              valueFrom:
+                secretKeyRef:
+                  name: re-id-mongo
+                  key: uri
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
