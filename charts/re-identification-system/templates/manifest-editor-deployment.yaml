@@ -21,6 +21,10 @@ spec:
             - containerPort: 8000
               name: http
           env:
+            - name: BASE_URL
+              value: {{ .Values.basePath | quote }}
+            - name: MANIFEST_EDITOR_BUCKET
+              value: "gs://{{ .Release.Namespace }}.{{ .Values.domain }}"
             - name: MANIFEST_EDITOR_MONGO
               valueFrom:
                 secretKeyRef:

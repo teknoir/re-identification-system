@@ -26,6 +26,8 @@ spec:
                 secretKeyRef:
                   name: re-id-mongo
                   key: uri
+            - name: BUCKET_PREFIX
+              value: "gs://{{ .Release.Namespace }}.{{ .Values.domain }}"
             - name: MODEL_CKPT
               value: "{{ .Values.matchingService.modelCheckpoint}}"
           resources:
