@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-name: matching-service
+  name: matching-service
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
@@ -21,13 +21,13 @@ spec:
             - containerPort: 8000
               name: http
           env:
-            - name: MONGO_URI
+            - name: REID_MONGODB_URI
               valueFrom:
                 secretKeyRef:
                   name: re-id-mongo
                   key: uri
             - name: MODEL_CKPT
-              value: model.pt
+              value: "{{ .Values.matchingService.modelCheckpoint}}"
           resources:
             requests:
               cpu: 250m

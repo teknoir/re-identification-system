@@ -1,7 +1,7 @@
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
-  name: re-identification-system
+  name: manifest-editor
   namespace: {{ .Release.Namespace }}
 spec:
   gateways:
@@ -11,9 +11,9 @@ spec:
   http:
     - match:
         - uri:
-            prefix: {{ .Values.basePath | quote }}
+            prefix: "{{ .Values.basePath }}/manifest-editor"
       route:
         - destination:
-            host: re-identification-system.{{ .Release.Namespace }}.svc.cluster.local
+            host: manifest-editor.{{ .Release.Namespace }}.svc.cluster.local
             port:
               number: 80

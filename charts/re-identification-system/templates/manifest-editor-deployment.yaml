@@ -1,6 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
-name: manifest-editor
+metadata:
+  name: manifest-editor
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1

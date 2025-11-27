@@ -29,7 +29,7 @@ export CONTEXT="gke_teknoir_us-central1-c_teknoir-cluster"
 export PROJECT="teknoir"
 export CLUSTER="teknoir-cluster"
 export DOMAIN="teknoir.cloud"
-mkdir -p /tmp/lc
+mkdir -p /tmp/reid
 
 context_exists() {
     kubectl config get-contexts -o name | grep -q "^$1$"
@@ -48,7 +48,7 @@ check_port() {
 check_service_running() {
     local service=$1
     local port=$2
-    local pidfile="/tmp/lc/$service.pid"
+    local pidfile="/tmp/reid/$service.pid"
 
     # Check if pidfile exists and process is still running
     if [ -f "$pidfile" ]; then
@@ -76,7 +76,7 @@ port_forward() {
   echo "kubectl --context=$CONTEXT port-forward -n $4 svc/$1"
   kubectl --context=$CONTEXT port-forward -n "$4" svc/$1 $2:$3 2>&1 &
   child_pid=$!
-  echo "$child_pid" > "/tmp/lc/$service.pid"
+  echo "$child_pid" > "/tmp/reid/$service.pid"
 }
 
 if context_exists "$CONTEXT"; then
@@ -103,16 +103,16 @@ echo "Using namespace: $NAMESPACE"
 forward_and_catch() {
   service=$1
   port_from=$2
-  prot_to=$3
+  port_to=$3
   ns=$4
   echo "[$service] Starting port forwarding"
   has_error=true
   while [[ "${has_error}" == "true" ]]; do
-    exec 3< <(port_forward ${service} ${port_from} ${prot_to} ${ns})
+    exec 3< <(port_forward ${service} ${port_from} ${port_to} ${ns})
     has_error=false
     while IFS= read <&3 line && [[ "${has_error}" == "false" ]]
       do
-        child_pid=$(cat "/tmp/lc/$service.pid")
+        child_pid=$(cat "/tmp/reid/$service.pid")
         if [[ $line == *"broken pipe"* || $line == *"Timeout"* ]]; then
           echo "[$service] ERROR: $line"
           kill -9 "$child_pid"
@@ -127,10 +127,19 @@ forward_and_catch() {
   echo "[$service] Port forwarding has stopped"
 }
 
+start_local_service() {
+  service=$1
+  cmd=$2
+  echo "[$service] Starting service"
+  eval "$cmd" 2>&1 &
+  child_pid=$!
+  echo "$child_pid" > "/tmp/reid/$service.pid"
+}
+
+
 if ! check_service_running "mongodb" 27017; then
     forward_and_catch "mongodb" 27017 27017 "$NAMESPACE" &
 fi
-
 
 if ! check_service_running "re-id-mongo" 37017; then
     forward_and_catch "re-id-mongo" 37017 27017 "$NAMESPACE" &
@@ -139,6 +148,8 @@ fi
 if ! check_service_running "sdmc-media-service" 8882; then
     forward_and_catch "sdmc-media-service" 8882 80 "$NAMESPACE" &
 fi
+
+
 
 echo "Waiting for essential services..."
 for i in {1..30}; do
@@ -155,8 +166,8 @@ done
 
 cleanup() {
     echo "Cleaning up port forwarding processes..."
-    if [ -d "/tmp/lc" ]; then
-        for pidfile in /tmp/lc/*.pid; do
+    if [ -d "/tmp/reid" ]; then
+        for pidfile in /tmp/reid/*.pid; do
             if [ -f "$pidfile" ]; then
                 pid=$(cat "$pidfile")
                 kill -9 "$pid" 2>/dev/null || true
@@ -168,22 +179,38 @@ cleanup() {
 
 trap cleanup EXIT
 
-# Start the app after port forwarding
-echo "Starting dev server..."
+# Set environment variables for local development
 export MONGODB_PASSWORD=$(kubectl --context=$CONTEXT --namespace=$NAMESPACE get secret mongodb-credentials -o yaml | yq .data.password | base64 -d)
 export MONGODB_USER=$(kubectl --context=$CONTEXT --namespace=$NAMESPACE get secret mongodb-credentials -o yaml | yq .data.username | base64 -d)
 export HISTORIAN_MONGODB_URI="mongodb://${MONGODB_USER}:${MONGODB_PASSWORD}@localhost:27017/historian?authSource=admin&readPreference=primary&appname=LC&ssl=false"
-
 export REID_MONGODB_PASSWORD=$(kubectl --context=$CONTEXT --namespace=$NAMESPACE get secret re-id-mongo -o yaml | yq .data.password | base64 -d)
 export REID_MONGODB_USER=$(kubectl --context=$CONTEXT --namespace=$NAMESPACE get secret re-id-mongo -o yaml | yq .data.username | base64 -d)
 export REID_MONGODB_URI="mongodb://${REID_MONGODB_USER}:${REID_MONGODB_PASSWORD}@localhost:37017/historian?authSource=admin&readPreference=primary&appname=LC&ssl=false"
-
 export MEDIA_SERVICE_BASE_URL="http://localhost:8882/$NAMESPACE/media-service/api"
 export BASE_URL="/"
+
+# Activate Python virtual environment
+source .venv/bin/activate
+
+# Start local services if not already running
+if ! check_service_running "matching-service" 8884; then
+    export BUCKET_PREFIX="gs://${NAMESPACE}.${DOMAIN}"
+    export REID_MONGODB_URI=${REID_MONGODB_URI}
+    start_local_service "matching-service" "uvicorn matching-service.app:app --host 0.0.0.0 --port 8884"
+fi
+if ! check_service_running "manifest-editor" 8883; then
+    export MANIFEST_API_BASE=http://localhost:8884
+    export MANIFEST_EDITOR_MONGO=${REID_MONGODB_URI}
+    export MANIFEST_EDITOR_BUCKET="gs://${NAMESPACE}.${DOMAIN}"
+    start_local_service "manifest-editor" "uvicorn manifest-editor.manifest_editor_server:app --host 0.0.0.0 --port 8883"
+fi
+
+# Start the app after port forwarding
+echo "Starting dev server..."
 export PORT=3000
-
+pushd re-identification-system
 npm run dev
-
+popd
 
 # Wait for all background processes to complete
 echo "All background tasks have completed."

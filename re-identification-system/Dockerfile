@@ -18,7 +18,7 @@ COPY package*.json ./
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
 
 # Copy source code
-COPY . .
+COPY .. .
 
 # Run lightweight tests (fail build if tests fail)
 RUN npm test

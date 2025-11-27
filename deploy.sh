@@ -24,18 +24,20 @@ if [ -z "$TARGET" ]; then
     TARGET="demonstrations"
 fi
 
-export BRANCH_NAME=${BRANCH_NAME:-"local"}
-export SHORT_SHA=$(date +%Y%m%d-%H%M%S)
-export IMAGE="us-docker.pkg.dev/teknoir/gcr.io/re-identification-system"
-
-docker buildx build \
-  --platform=linux/amd64 \
-  --push \
-  --tag "${IMAGE}:${BRANCH_NAME}-${SHORT_SHA}" \
-  .
+# Build the Docker images first
+export BRANCH_NAME=${BRANCH_NAME:-"local-build"}
+export SHORT_SHA=${SHORT_SHA:-$(date +%Y%m%d-%H%M%S)}
+pushd re-identification-system
+./build.sh
+popd
+pushd manifest-editor
+./build.sh
+popd
+pushd matching-service
+./build.sh
+popd
 
 export NAMESPACE=${TARGET}
-
 if [[ $NAMESPACE == "demonstrations" ]] ; then
   CONTEXT="gke_teknoir-poc_us-central1-c_teknoir-dev-cluster"
   DOMAIN="teknoir.dev"
@@ -63,6 +65,16 @@ spec:
     image:
       repository: ${IMAGE}
       tag: ${BRANCH_NAME}-${SHORT_SHA}
+    matchingService:
+      modelCheckpoint: /app/models/encoder/model.pt
+      image:
+        repository: us-docker.pkg.dev/teknoir/gcr.io/matching-service
+        tag: ${BRANCH_NAME}-${SHORT_SHA}
+
+    manifestEditor:
+      image:
+        repository: us-docker.pkg.dev/teknoir/gcr.io/manifest-editor
+        tag: ${BRANCH_NAME}-${SHORT_SHA}
 
     event-processing-pipeline:
       streams:
@@ -73,8 +85,6 @@ spec:
             repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
             tag: feature-line-crossing-cloud-stream-a3d3ec4
           serviceAccountName: default-editor
-          reIdMatchingService:
-            url: http://re-identification-service:80
           instructor:
             model: projects/815276040543/locations/us-central1/endpoints/1385445124137287680
             #model: gemini-2.5-flash

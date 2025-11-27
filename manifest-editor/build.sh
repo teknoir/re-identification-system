@@ -3,8 +3,8 @@ set -eo pipefail
 #set -x
 
 export BRANCH_NAME=${BRANCH_NAME:-"local"}
-export SHORT_SHA=$(date +%Y%m%d-%H%M%S)
-export IMAGE="us-docker.pkg.dev/teknoir/gcr.io/re-identification-system"
+export SHORT_SHA=${SHORT_SHA:-$(date +%Y%m%d-%H%M%S)}
+export IMAGE=${IMAGE:-"us-docker.pkg.dev/teknoir/gcr.io/manifest-editor"}
 
 docker buildx build \
   --platform=linux/amd64 \

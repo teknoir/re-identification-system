@@ -1,7 +1,7 @@
 # Ignore files not needed in final image
 node_modules
 npm-debug.log
-Dockerfile*
+re-identification-system/Dockerfile
 .dockerignore
 .git
 .gitignore

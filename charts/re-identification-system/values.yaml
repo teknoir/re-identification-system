@@ -1,12 +1,12 @@
 basePath: /re-identification-system
 domain: teknoir.cloud
-mediaServiceBaseUrl: https://teknoir.cloud/victra-poc/media-service/api
 
 image:
   repository: us-docker.pkg.dev/teknoir/gcr.io/re-identification-system
   tag: latest
 
 matchingService:
+  modelCheckpoint: /app/models/encoder/model.pt
   image:
     repository: us-docker.pkg.dev/teknoir/gcr.io/re-identification-system-matching-service
     tag: latest

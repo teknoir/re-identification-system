@@ -2,7 +2,7 @@ apiVersion: v2
 name: re-identification-system
 description: Helm chart for deploying Re-Identification System services.
 type: application
-version: 0.0.4
+version: 0.0.5-beta.1
 appVersion: "0.1.0"
 
 dependencies:

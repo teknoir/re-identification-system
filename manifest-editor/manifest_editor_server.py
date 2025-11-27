@@ -30,6 +30,7 @@ ENTRIES_COLL = os.getenv("MANIFEST_EDITOR_ENTRIES_COLL", "entries")
 CLUSTERS_COLL = os.getenv("MANIFEST_EDITOR_CLUSTERS_COLL", "clusters")
 GT_COLL = os.getenv("MANIFEST_EDITOR_GT_COLL", "map")
 BLOB_BASE = os.getenv("MANIFEST_EDITOR_BUCKET", "gs://victra-poc.teknoir.cloud")  # optional prefix for relative files
+BASE_URL =  os.getenv("BASE_URL", "/")  # optional base url
 
 import sys  # noqa: E402
 if str(ROOT) not in sys.path:
@@ -37,7 +38,7 @@ if str(ROOT) not in sys.path:
 
  # noqa: E402
 
-app = FastAPI(root_path="/re-identification-system/manifest-editor")
+app = FastAPI(root_path=os.path.join(BASE_URL, "manifest-editor"))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

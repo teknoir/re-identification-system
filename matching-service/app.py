@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from .matcher import ReEntryMatcher
 
-MODEL_CKPT = os.getenv("MODEL_CKPT", "matching_service/models/encoder/model.pt")
+MODEL_CKPT = os.getenv("MODEL_CKPT", "matching-service/models/encoder/model.pt")
 ATTR_SCHEMA = os.getenv("ATTR_SCHEMA", "attr_schema.json")
 BUCKET_PREFIX = os.getenv("BUCKET_PREFIX", "gs://victra-poc.teknoir.cloud")
 MONGO_URI    = os.getenv("REID_MONGODB_URI", "mongodb://teknoir:change-me@localhost:37017")
@@ -16,7 +16,7 @@ MONGO_EVENTS_COLLECTION = os.getenv("MONGO_EVENTS_COLLECTION", "line-crossings")
 THRESHOLD = float(os.getenv("THRESHOLD", "0.753"))
 TOPK      = int(os.getenv("TOPK", "20"))
 
-app = FastAPI(title="Re-entry Matching Service", version="1.0.0", root_path="/re-identification-system/matching-service")
+app = FastAPI(title="Re-entry Matching Service", version="1.0.0")
 
 matcher = ReEntryMatcher(
     model_ckpt_path=MODEL_CKPT,
