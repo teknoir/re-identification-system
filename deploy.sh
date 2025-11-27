@@ -56,7 +56,7 @@ metadata:
 spec:
   repo: https://teknoir.github.io/re-identification-system
   chart: re-identification-system
-  version: 0.0.5-beta.3
+  version: 0.0.5
   targetNamespace: ${NAMESPACE}
   valuesContent: |-
     basePath: /${NAMESPACE}/re-identification-system
@@ -65,7 +65,7 @@ spec:
     image:
       tag: ${BRANCH_NAME}-${SHORT_SHA}
     matchingService:
-      modelCheckpoint: /app/models/encoder/model.pt
+      modelCheckpoint: /app/matching-service/models/encoder/model.pt
       image:
         tag: ${BRANCH_NAME}-${SHORT_SHA}
     manifestEditor:
