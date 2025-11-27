@@ -56,24 +56,20 @@ metadata:
 spec:
   repo: https://teknoir.github.io/re-identification-system
   chart: re-identification-system
-  version: 0.0.5-beta.2
+  version: 0.0.5-beta.3
   targetNamespace: ${NAMESPACE}
   valuesContent: |-
     basePath: /${NAMESPACE}/re-identification-system
     domain: ${DOMAIN}
     mediaServiceBaseUrl: https://${DOMAIN}/${NAMESPACE}/media-service/api
     image:
-      repository: ${IMAGE}
       tag: ${BRANCH_NAME}-${SHORT_SHA}
     matchingService:
       modelCheckpoint: /app/models/encoder/model.pt
       image:
-        repository: us-docker.pkg.dev/teknoir/gcr.io/matching-service
         tag: ${BRANCH_NAME}-${SHORT_SHA}
-
     manifestEditor:
       image:
-        repository: us-docker.pkg.dev/teknoir/gcr.io/manifest-editor
         tag: ${BRANCH_NAME}-${SHORT_SHA}
 
     event-processing-pipeline:

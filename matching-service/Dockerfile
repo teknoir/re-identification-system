@@ -17,9 +17,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --create-home --shell /bin/bash appuser
 WORKDIR /app
 
-# Copy source
-COPY . /app/matching-service
-
 # Install Python deps (replace / extend as needed; prefer requirements.txt if available)
 # If a requirements.txt exists you can replace this with: COPY requirements.txt . && pip install -r requirements.txt
 RUN pip install --no-cache-dir \
@@ -28,11 +25,12 @@ RUN pip install --no-cache-dir \
     pymongo \
     numpy \
     scikit-learn \
-    torch \
     faiss-cpu
 
-# Optional: uncomment to install torch if required (large layer)
-# RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Copy source
+COPY . /app/matching-service
 
 # Runtime environment defaults (override with -e)
 ENV MODEL_CKPT="matching-service/models/encoder/model.pt" \

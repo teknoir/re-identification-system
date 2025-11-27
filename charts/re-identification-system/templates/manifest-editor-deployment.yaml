@@ -13,6 +13,7 @@ spec:
       labels:
         application: manifest-editor
     spec:
+      serviceAccountName: "{{ .Values.manifestEditor.serviceAccountName }}"
       containers:
         - name: manifest-editor
           image: "{{ .Values.manifestEditor.image.repository }}:{{ .Values.manifestEditor.image.tag }}"

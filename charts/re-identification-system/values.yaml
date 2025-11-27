@@ -8,12 +8,13 @@ image:
 matchingService:
   modelCheckpoint: /app/models/encoder/model.pt
   image:
-    repository: us-docker.pkg.dev/teknoir/gcr.io/re-identification-system-matching-service
+    repository: us-docker.pkg.dev/teknoir/gcr.io/matching-service
     tag: latest
 
 manifestEditor:
+  serviceAccountName: default-editor
   image:
-    repository: us-docker.pkg.dev/teknoir/gcr.io/re-identification-system-manifest-editor
+    repository: us-docker.pkg.dev/teknoir/gcr.io/manifest-editor
     tag: latest
 
 mongo:

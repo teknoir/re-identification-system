@@ -16,10 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --create-home --shell /bin/bash appuser
 WORKDIR /app
 
-# Copy only the manifest editor and its parent package
-# If you build from the repo root, this copies the entire project.
-COPY . /app/manifest-editor
-
 # Install runtime Python dependencies
 # Note: Requirements are inferred from the server imports.
 RUN pip install --no-cache-dir \
@@ -28,6 +24,10 @@ RUN pip install --no-cache-dir \
     requests \
     pymongo \
     google-cloud-storage
+
+# Copy only the manifest editor and its parent package
+# If you build from the repo root, this copies the entire project.
+COPY . /app/manifest-editor
 
 # Optional defaults for the service; override via `docker run -e ...`
 ENV MANIFEST_EDITOR_STATE=/app/gt/manifest_editor_state.json \
