@@ -33,11 +33,7 @@ spec:
             secretKeyRef:
               name: re-id-mongo
               key: password
-  volumeClaimTemplates:
-  - metadata:
-      name: mongo-persistent-storage
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      resources:
-        requests:
-          storage: 10Gi
+      volumes:
+        - name: mongo-persistent-storage
+          persistentVolumeClaim:
+            claimName: re-id-mongo
