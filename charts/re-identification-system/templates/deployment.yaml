@@ -1,3 +1,4 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -48,3 +49,34 @@ spec:
             limits:
               cpu: 500m
               memory: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: re-identification-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      application: re-identification-service
+  template:
+    metadata:
+      labels:
+        application: re-identification-service
+    spec:
+      containers:
+        - name: re-identification-service
+          image: "{{ .Values.service.image.repository }}:{{ .Values.service.image.tag }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+              name: http
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
