@@ -72,6 +72,11 @@ spec:
       image:
         tag: ${BRANCH_NAME}-${SHORT_SHA}
 
+    triton:
+      models:
+        - name: swin-reid
+          image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-local-20251112-104202
+
     event-processing-pipeline:
       streams:
         - stream: cloud-line-crossing
