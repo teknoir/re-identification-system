@@ -2,8 +2,9 @@
 import os
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from .matcher import ReEntryMatcher
+from matcher import ReEntryMatcher
 
 MODEL_CKPT = os.getenv("MODEL_CKPT", "matching-service/models/encoder/model.pt")
 ATTR_SCHEMA = os.getenv("ATTR_SCHEMA", "attr_schema.json")
@@ -13,10 +14,18 @@ MONGO_DB     = os.getenv("MONGO_DB", "reid_service")
 MONGO_ENTRIES_COLLECTION = os.getenv("MONGO_ENTRIES_COLLECTION", "observations")
 MONGO_EVENTS_COLLECTION = os.getenv("MONGO_EVENTS_COLLECTION", "line-crossings")
 
-THRESHOLD = float(os.getenv("THRESHOLD", "0.753"))
+MARGIN    = float(os.getenv("MARGIN", "0.02"))
+THRESHOLD = float(os.getenv("THRESHOLD", "0.88"))
 TOPK      = int(os.getenv("TOPK", "20"))
 
 app = FastAPI(title="Re-entry Matching Service", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 matcher = ReEntryMatcher(
     model_ckpt_path=MODEL_CKPT,

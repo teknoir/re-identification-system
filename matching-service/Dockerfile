@@ -19,13 +19,8 @@ WORKDIR /app
 
 # Install Python deps (replace / extend as needed; prefer requirements.txt if available)
 # If a requirements.txt exists you can replace this with: COPY requirements.txt . && pip install -r requirements.txt
-RUN pip install --no-cache-dir \
-    fastapi \
-    uvicorn[standard] \
-    pymongo \
-    numpy \
-    scikit-learn \
-    faiss-cpu
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 

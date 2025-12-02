@@ -31,6 +31,7 @@ CLUSTERS_COLL = os.getenv("MANIFEST_EDITOR_CLUSTERS_COLL", "clusters")
 GT_COLL = os.getenv("MANIFEST_EDITOR_GT_COLL", "map")
 BLOB_BASE = os.getenv("MANIFEST_EDITOR_BUCKET", "gs://victra-poc.teknoir.cloud")  # optional prefix for relative files
 BASE_URL =  os.getenv("BASE_URL", "/")  # optional base url
+MANIFEST_API_TIMEOUT_SECONDS = int(os.getenv("MANIFEST_API_TIMEOUT_SECONDS", "60"))
 
 import sys  # noqa: E402
 if str(ROOT) not in sys.path:
@@ -209,9 +210,9 @@ def write_editor_state(payload: Dict[str, Any]) -> None:
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    if not HTML_PATH.exists():
-        raise HTTPException(status_code=500, detail="manifest_editor.html not found")
-    return HTML_PATH.read_text(encoding="utf-8")
+    if not API_EDITOR_PATH.exists():
+        raise HTTPException(status_code=500, detail="manifest_api_editor.html not found")
+    return API_EDITOR_PATH.read_text(encoding="utf-8")
 
 
 @app.get("/manifest_editor", response_class=HTMLResponse)
@@ -266,7 +267,6 @@ def manifest_proxy(
     store_id: str,
     entry_id: Optional[str] = None,
     camera: Optional[List[str]] = Query(None),
-    api_base: Optional[str] = Query(None, description="Override manifest API base URL"),
 ):
     # First try Mongo; fall back to API if not found
     try:
@@ -275,7 +275,7 @@ def manifest_proxy(
     except Exception:
         pass
 
-    base = api_base or MANIFEST_API_BASE
+    base = MANIFEST_API_BASE
     params = [("day_id", day_id), ("store_id", store_id)]
     if entry_id:
         params.append(("entry_id", entry_id))
@@ -283,7 +283,8 @@ def manifest_proxy(
         for cam in camera:
             params.append(("camera", cam))
     url = f"{base.rstrip('/')}/manifest"
-    resp = requests.get(url, params=params, timeout=30)
+    print(f"[MANIFEST-EDITOR] Requesting manifest from: {url} with timeout: {MANIFEST_API_TIMEOUT_SECONDS}s", flush=True)
+    resp = requests.get(url, params=params, timeout=MANIFEST_API_TIMEOUT_SECONDS)
     if resp.status_code != 200:
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
     data = resp.json()

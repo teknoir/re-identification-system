@@ -130,10 +130,12 @@ forward_and_catch() {
 start_local_service() {
   service=$1
   cmd=$2
-  echo "[$service] Starting service"
-  eval "$cmd" 2>&1 &
+  logfile="/tmp/reid/$service.log"
+  echo "[$service] Starting service (logging to $logfile)"
+  eval "$cmd" > "$logfile" 2>&1 &
   child_pid=$!
   echo "$child_pid" > "/tmp/reid/$service.pid"
+  tail -f "$logfile" &
 }
 
 
@@ -196,13 +198,14 @@ source .venv/bin/activate
 if ! check_service_running "matching-service" 8884; then
     export BUCKET_PREFIX="gs://${NAMESPACE}.${DOMAIN}"
     export REID_MONGODB_URI=${REID_MONGODB_URI}
-    start_local_service "matching-service" "uvicorn matching-service.app:app --host 0.0.0.0 --port 8884"
+    start_local_service "matching-service" "(cd matching-service && MODEL_CKPT='models/encoder/model.pt' uvicorn app:app --host 0.0.0.0 --port 8884)"
 fi
 if ! check_service_running "manifest-editor" 8883; then
     export MANIFEST_API_BASE=http://localhost:8884
+    export MANIFEST_API_TIMEOUT_SECONDS=120
     export MANIFEST_EDITOR_MONGO=${REID_MONGODB_URI}
     export MANIFEST_EDITOR_BUCKET="gs://${NAMESPACE}.${DOMAIN}"
-    start_local_service "manifest-editor" "uvicorn manifest-editor.manifest_editor_server:app --host 0.0.0.0 --port 8883"
+    start_local_service "manifest-editor" "uvicorn manifest-editor.manifest_editor_server:app --host 0.0.0.0 --port 8883 --workers 1"
 fi
 
 # Start the app after port forwarding

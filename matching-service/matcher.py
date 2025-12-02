@@ -13,8 +13,8 @@ import torch
 import faiss
 import numpy as np
 from pymongo import MongoClient
-from .metric_model import load_entry_encoder, encode_numpy
-from .data_utils import load_attr_schema, vec_from_schema
+from metric_model import EntryEncoder
+from data_utils import load_attr_schema, vec_from_schema, l2norm_np
 
 class DayIndex:
     def __init__(self, dim: int):
@@ -35,18 +35,20 @@ class ReEntryMatcher:
         model_ckpt_path: str,
         attr_schema_path: Optional[str] = None,
         mongo_uri: Optional[str] = None,
-        mongo_db: str = "reid_service",
-        entries_collection: str = "entries",
+        mongo_db: str = "retail_reid",
         events_collection: str = "line-crossings",
+        entries_collection: str = "observations",
         threshold: float = 0.88,
+        margin: float = 0.02,
         topk: int = 20,
     ):
-        # load model (new encoder2 checkpoint format)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model, self.ck = load_entry_encoder(model_ckpt_path, device=self.device)
+        # load model
+        ck = torch.load(model_ckpt_path, map_location="cpu")
+        self.model = EntryEncoder(ck["vis_dim"], ck["attr_dim"], ck["emb_dim"], ck["use_attention"], ck["dropout"])
+        self.model.load_state_dict(ck["state_dict"])
         self.model.eval()
         torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "1")))
-        self.dim = int(self.ck["emb_dim"])
+        self.dim = ck["emb_dim"]
 
         self.attr_schema = load_attr_schema(attr_schema_path) if attr_schema_path else None
 
@@ -57,11 +59,12 @@ class ReEntryMatcher:
             self.db = self.mongo[mongo_db]
 
         self.threshold = float(os.getenv("THRESHOLD", threshold))
+        self.margin = float(os.getenv("MARGIN", margin))
         self.topk = int(os.getenv("TOPK", topk))
 
         self.by_day_store: Dict[str, Dict[str, DayIndex]] = {}
-        self.entries_collection = entries_collection
         self.events_collection = events_collection
+        self.entries_collection = entries_collection
 
     @staticmethod
     def _store_from_entry(entry_id: str) -> str:
@@ -74,21 +77,15 @@ class ReEntryMatcher:
         return day[store_id]
 
     def encode_entry(self, embeddings: List[List[float]], attrs: Optional[Dict[str, Any]] = None) -> np.ndarray:
-        vis_embeds = np.stack([np.asarray(v, np.float32).reshape(-1) for v in embeddings], axis=0)
-        # ensure per-frame vectors are normalized to stay consistent with training
-        norms = np.linalg.norm(vis_embeds, axis=1, keepdims=True) + 1e-10
-        vis_embeds = vis_embeds / norms
-        mask = np.ones((vis_embeds.shape[0],), dtype=bool)
+        V = np.stack([l2norm_np(np.asarray(v, np.float32).reshape(-1)) for v in embeddings], axis=0)  # (N,Dv)
+        avec = vec_from_schema(attrs or {}, self.attr_schema) if self.attr_schema else np.zeros((0,), np.float32)
 
-        attr_vec = vec_from_schema(attrs or {}, self.attr_schema) if self.attr_schema else np.zeros((0,), np.float32)
-        attr_dim = int(self.ck["attr_dim"])
-        if attr_vec.size == 0 and attr_dim > 0:
-            attr_vec = np.zeros((attr_dim,), dtype=np.float32)
-        if attr_vec.shape[0] != attr_dim:
-            raise ValueError(f"attr vector dim {attr_vec.shape[0]} != expected {attr_dim}")
-
-        z = encode_numpy(self.model, vis_embeds, mask, attr_vec, device=self.device)
-        return z.astype(np.float32, copy=False)
+        with torch.no_grad():
+            vis_t = torch.from_numpy(V).unsqueeze(0).float()
+            mask = torch.ones((1, V.shape[0]), dtype=torch.bool)
+            attr_t = torch.from_numpy(avec).unsqueeze(0).float() if avec.size>0 else None
+            z = self.model(vis_t, attr_t, mask=mask).squeeze(0).cpu().numpy()
+        return l2norm_np(z.astype(np.float32))
 
     def query_then_add(
         self,
@@ -117,7 +114,7 @@ class ReEntryMatcher:
             sims, nn_idx, ids = idx.search(z, K)
             nn1 = float(sims[0]); nn2 = float(sims[1]) if len(sims) > 1 else -1.0
             id1 = ids[int(nn_idx[0])]
-            is_match = nn1 >= self.threshold
+            is_match = (nn1 >= self.threshold) and ((nn1 - nn2) >= self.margin)
             if is_match:
                 decision.update({"status": "match", "match_id": id1})
             decision.update({"score": nn1, "score2": nn2})
@@ -135,13 +132,11 @@ class ReEntryMatcher:
                 "timestamp": timestamp,
                 "direction": direction,
                 "camera": camera,
-                "files": image_uris or [],
                 "images": image_uris or [],
                 "vis": {"per_image_dim": len(embeddings[0]) if embeddings else 0, "embeddings": embeddings},
-                "embeddings": embeddings or [],
                 "attrs": attrs or {},
             }
-            self.db[self.entries_collection].replace_one({"_id": entry_id}, doc, upsert=True)
+            self.db.entries.replace_one({"_id": entry_id}, doc, upsert=True)
 
         return decision
 
@@ -251,7 +246,7 @@ class ReEntryMatcher:
                 sims, idxs = temp_index.search(vec.reshape(1, -1).astype(np.float32), K)
                 nn1 = float(sims[0][0])
                 nn2 = float(sims[0][1]) if K > 1 else -1.0
-                is_match = nn1 >= self.threshold
+                is_match = (nn1 >= self.threshold) and ((nn1 - nn2) >= self.margin)
                 if is_match:
                     cluster_idx = assignments[int(idxs[0][0])]
             if cluster_idx is None:

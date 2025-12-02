@@ -26,6 +26,8 @@ spec:
               value: {{ .Values.basePath | quote }}
             - name: MANIFEST_EDITOR_BUCKET
               value: "gs://{{ .Release.Namespace }}.{{ .Values.domain }}"
+            - name: MANIFEST_API_TIMEOUT_SECONDS
+              value: "{{ .Values.manifestEditor.apiTimeoutSeconds | default 60 }}"
             - name: MANIFEST_EDITOR_MONGO
               valueFrom:
                 secretKeyRef:
