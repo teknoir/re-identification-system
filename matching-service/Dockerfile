@@ -15,17 +15,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash appuser
-WORKDIR /app
-
-# Install Python deps (replace / extend as needed; prefer requirements.txt if available)
-# If a requirements.txt exists you can replace this with: COPY requirements.txt . && pip install -r requirements.txt
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+WORKDIR /app/matching-service
 
 # Copy source
 COPY . /app/matching-service
+
+# Install Python deps (replace / extend as needed; prefer requirements.txt if available)
+# If a requirements.txt exists you can replace this with: COPY requirements.txt . && pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 EXPOSE 8000
 
@@ -38,5 +36,4 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 # Start FastAPI via uvicorn
-CMD ["uvicorn", "matching-service.app:app", "--host", "0.0.0.0", "--port", "8000"]
-
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

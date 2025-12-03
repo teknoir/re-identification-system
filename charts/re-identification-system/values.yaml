@@ -1,4 +1,5 @@
 basePath: /re-identification-system
+manifestApiBaseUrl: https://manifest-api.teknoir.cloud
 domain: teknoir.cloud
 
 image:
