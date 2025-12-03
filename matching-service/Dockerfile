@@ -15,28 +15,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash appuser
-WORKDIR /app
-
-# Install Python deps (replace / extend as needed; prefer requirements.txt if available)
-# If a requirements.txt exists you can replace this with: COPY requirements.txt . && pip install -r requirements.txt
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+WORKDIR /app/matching-service
 
 # Copy source
 COPY . /app/matching-service
 
-# Runtime environment defaults (override with -e)
-ENV MODEL_CKPT="matching-service/models/encoder/model.pt" \
-    ATTR_SCHEMA="attr_schema.json" \
-    BUCKET_PREFIX="gs://victra-poc.teknoir.cloud" \
-    REID_MONGODB_URI="mongodb://teknoir:change-me@localhost:37017" \
-    MONGO_DB="reid_service" \
-    MONGO_ENTRIES_COLLECTION="observations" \
-    MONGO_EVENTS_COLLECTION="line-crossings" \
-    THRESHOLD="0.753" \
-    TOPK="20"
+# Install Python deps (replace / extend as needed; prefer requirements.txt if available)
+# If a requirements.txt exists you can replace this with: COPY requirements.txt . && pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 EXPOSE 8000
 
@@ -44,8 +31,9 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://localhost:8000/health || exit 1
 
+# Ensure /app is owned by appuser
+RUN chown -R appuser:appuser /app
 USER appuser
 
 # Start FastAPI via uvicorn
-CMD ["uvicorn", "matching-service.app:app", "--host", "0.0.0.0", "--port", "8000"]
-
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

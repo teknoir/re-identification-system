@@ -29,16 +29,6 @@ RUN pip install --no-cache-dir \
 # If you build from the repo root, this copies the entire project.
 COPY . /app/manifest-editor
 
-# Optional defaults for the service; override via `docker run -e ...`
-ENV MANIFEST_EDITOR_STATE=/app/gt/manifest_editor_state.json \
-    MANIFEST_API_BASE=http://matching-service \
-    MANIFEST_EDITOR_MONGO=mongodb://teknoir:change-me@localhost:37017 \
-    MANIFEST_EDITOR_DB=gt_tools \
-    MANIFEST_EDITOR_ENTRIES_COLL=entries \
-    MANIFEST_EDITOR_CLUSTERS_COLL=clusters \
-    MANIFEST_EDITOR_GT_COLL=map \
-    MANIFEST_EDITOR_BUCKET=gs://victra-poc.teknoir.cloud
-
 # Expose service port
 EXPOSE 8000
 

@@ -212,28 +212,36 @@ def write_editor_state(payload: Dict[str, Any]) -> None:
 def index():
     if not API_EDITOR_PATH.exists():
         raise HTTPException(status_code=500, detail="manifest_api_editor.html not found")
-    return API_EDITOR_PATH.read_text(encoding="utf-8")
-
+    html = API_EDITOR_PATH.read_text(encoding="utf-8")
+    # inject BASE_URL for client-side usage
+    inject = f"<script>window.BASE_URL = {json.dumps(BASE_URL.rstrip('/'))};</script>"
+    return inject + html
 
 @app.get("/manifest_editor", response_class=HTMLResponse)
 def manifest_api_editor():
     if not API_EDITOR_PATH.exists():
         raise HTTPException(status_code=500, detail="manifest_api_editor.html not found")
-    return API_EDITOR_PATH.read_text(encoding="utf-8")
+    html = API_EDITOR_PATH.read_text(encoding="utf-8")
+    inject = f"<script>window.BASE_URL = {json.dumps(BASE_URL.rstrip('/'))};</script>"
+    return inject + html
 
 
 @app.get("/encoder_viewer", response_class=HTMLResponse)
 def encoder_viewer():
     if not ENCODER_VIEWER_PATH.exists():
         raise HTTPException(status_code=500, detail="encoder_dataset_viewer.html not found")
-    return ENCODER_VIEWER_PATH.read_text(encoding="utf-8")
+    html = ENCODER_VIEWER_PATH.read_text(encoding="utf-8")
+    inject = f"<script>window.BASE_URL = {json.dumps(BASE_URL.rstrip('/'))};</script>"
+    return inject + html
 
 
 @app.get("/gt_editor", response_class=HTMLResponse)
 def gt_editor():
     if not GT_EDITOR_PATH.exists():
         raise HTTPException(status_code=500, detail="gt_editor.html not found")
-    return GT_EDITOR_PATH.read_text(encoding="utf-8")
+    html = GT_EDITOR_PATH.read_text(encoding="utf-8")
+    inject = f"<script>window.BASE_URL = {json.dumps(BASE_URL.rstrip('/'))};</script>"
+    return inject + html
 
 # Serve encoder run artifacts (large files) for viewer defaults
 if ENCODER_STATIC_DIR.exists():
