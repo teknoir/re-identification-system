@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Processing Status Grid</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; background: #f5f6fb; color: #111827; }
+    header { background: #0f172a; color: #fff; padding: 18px 24px; display: flex; align-items: center; gap: 24px; }
+    header h1 { margin: 0; font-size: 20px; }
+    header a { color: #fff; text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+    main { padding: 20px; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08); margin-bottom: 16px; }
+    .toolbar { display: flex; gap: 12px; align-items: center; }
+    .toolbar input[type="date"] { padding: 7px 10px; border: 1px solid #cbd5f5; border-radius: 6px; font-size: 13px; }
+    button { padding: 7px 12px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; background: #334155; color: #fff; }
+    #grid-container { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: center; }
+    th { background: #f8fafc; }
+    td.processed { background-color: #dcfce7; }
+    td.not-processed { background-color: #f1f5f9; }
+    td a { color: #1d4ed8; text-decoration: none; }
+    td a:hover { text-decoration: underline; }
+    #status { margin-top: 10px; font-style: italic; color: #64748b; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Processing Status Grid</h1>
+    <a href="manifest_editor">Back to Manifest Editor</a>
+  </header>
+  <main>
+    <div class="card toolbar">
+      <label>Start Date: <input type="date" id="startDate"></label>
+      <label>End Date: <input type="date" id="endDate"></label>
+      <button id="refreshBtn">Refresh</button>
+    </div>
+    <div class="card">
+      <div id="grid-container"></div>
+      <div id="status"></div>
+    </div>
+  </main>
+
+  <script>
+    const BASE = (window.BASE_URL || "").replace(/\/+$/,'');
+    const EDITOR_BASE = `${BASE}/manifest-editor`;
+    const getApiUrl = (path) => `${EDITOR_BASE}${path}`;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const endDateEl = document.getElementById("endDate");
+      const startDateEl = document.getElementById("startDate");
+      
+      const today = new Date();
+      endDateEl.value = today.toISOString().split('T')[0];
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(today.getDate() - 30);
+      startDateEl.value = thirtyDaysAgo.toISOString().split('T')[0];
+
+      document.getElementById("refreshBtn").addEventListener("click", loadGridData);
+      loadGridData();
+    });
+
+    async function loadGridData() {
+      const statusEl = document.getElementById("status");
+      const gridContainer = document.getElementById("grid-container");
+      gridContainer.innerHTML = "";
+      statusEl.textContent = "Loading...";
+
+      const startDate = document.getElementById("startDate").value;
+      const endDate = document.getElementById("endDate").value;
+
+      try {
+        const url = getApiUrl(`/api/grid-status?start_date=${startDate}&end_date=${endDate}`);
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          throw new Error(await resp.text() || resp.statusText);
+        }
+        const data = await resp.json();
+        renderGrid(data);
+        statusEl.textContent = `Showing data from ${startDate} to ${endDate}.`;
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = `Failed to load data: ${err.message}`;
+      }
+    }
+
+    function renderGrid(data) {
+      const { days, stores, grid_data } = data;
+      const gridContainer = document.getElementById("grid-container");
+
+      if (!days.length || !stores.length) {
+        gridContainer.innerHTML = "<p>No data found for the selected date range.</p>";
+        return;
+      }
+
+      const dataMap = new Map();
+      grid_data.forEach(item => {
+        dataMap.set(`${item.day_id}-${item.store_id}`, item);
+      });
+
+      let table = '<table><thead><tr><th>Day</th>';
+      stores.forEach(store => {
+        table += `<th>${store}</th>`;
+      });
+      table += '</tr></thead><tbody>';
+
+      days.forEach(day => {
+        table += `<tr><td>${day}</td>`;
+        stores.forEach(store => {
+          const item = dataMap.get(`${day}-${store}`);
+          if (item) {
+            const cellClass = item.processed ? 'processed' : 'not-processed';
+            const manifestEditorUrl = getApiUrl(`/manifest_editor?day_id=${day}&store_id=${store}`);
+            const cellContent = `<a href="${manifestEditorUrl}" target="_blank">${item.count}</a>`;
+            table += `<td class="${cellClass}">${cellContent}</td>`;
+          } else {
+            table += '<td>-</td>';
+          }
+        });
+        table += '</tr>';
+      });
+
+      table += '</tbody></table>';
+      gridContainer.innerHTML = table;
+    }
+  </script>
+</body>
+</html>

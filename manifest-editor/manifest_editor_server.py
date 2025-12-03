@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -21,6 +21,7 @@ HTML_PATH = Path(__file__).with_name("manifest_editor.html")
 API_EDITOR_PATH = Path(__file__).with_name("manifest_api_editor.html")
 ENCODER_VIEWER_PATH = Path(__file__).with_name("encoder_dataset_viewer.html")
 GT_EDITOR_PATH = Path(__file__).with_name("gt_editor.html")
+STATUS_GRID_PATH = Path(__file__).with_name("processing_status.html")
 ENCODER_STATIC_DIR = ROOT / "model" / "encoder" / "runs"
 STATE_PATH = Path(os.getenv("MANIFEST_EDITOR_STATE", ROOT / "gt/manifest_editor_state.json"))
 MANIFEST_API_BASE = os.getenv("MANIFEST_API_BASE", "http://matching-service")
@@ -55,6 +56,18 @@ def get_db():
     if mongo_client is None:
         mongo_client = MongoClient(MONGO_URI)
     return mongo_client[MONGO_DB]
+
+
+reid_mongo_client: Optional[MongoClient] = None
+REID_MONGO_URI = os.getenv("REID_MONGODB_URI", "mongodb://teknoir:change-me@localhost:37017")
+REID_MONGO_DB = "reid_service"
+OBSERVATIONS_COLL = "observations"
+
+def get_reid_db():
+    global reid_mongo_client
+    if reid_mongo_client is None:
+        reid_mongo_client = MongoClient(REID_MONGO_URI)
+    return reid_mongo_client[REID_MONGO_DB]
 
 
 def load_manifest(source: str) -> Dict[str, Any]:
@@ -243,6 +256,15 @@ def gt_editor():
     inject = f"<script>window.BASE_URL = {json.dumps(BASE_URL.rstrip('/'))};</script>"
     return inject + html
 
+
+@app.get("/status_grid", response_class=HTMLResponse)
+def status_grid_viewer():
+    if not STATUS_GRID_PATH.exists():
+        raise HTTPException(status_code=500, detail="processing_status.html not found")
+    html = STATUS_GRID_PATH.read_text(encoding="utf-8")
+    inject = f"<script>window.BASE_URL = {json.dumps(BASE_URL.rstrip('/'))};</script>"
+    return inject + html
+
 # Serve encoder run artifacts (large files) for viewer defaults
 if ENCODER_STATIC_DIR.exists():
     app.mount("/static/encoder", StaticFiles(directory=str(ENCODER_STATIC_DIR)), name="encoder_static")
@@ -254,6 +276,64 @@ def _resolve_image_uri(source: str) -> str:
         return f"{BLOB_BASE.rstrip('/')}/{source.lstrip('/')}"
     raise HTTPException(status_code=404, detail="Unable to resolve image path; set MANIFEST_EDITOR_BUCKET for relative paths")
 
+
+@app.get("/api/grid-status")
+def grid_status(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    # Default date range: last 30 days
+    if not end_date:
+        end_date = date.today().isoformat()
+    if not start_date:
+        start_date = (date.today() - timedelta(days=30)).isoformat()
+
+    # Min date constraint
+    if start_date < "2025-11-20":
+        start_date = "2025-11-20"
+
+    reid_db = get_reid_db()
+    observations_coll = reid_db[OBSERVATIONS_COLL]
+
+    # Get observation counts and unique day/stores
+    pipeline = [
+        {"$match": {"day_id": {"$gte": start_date, "$lte": end_date}}},
+        {"$group": {"_id": {"day_id": "$day_id", "store_id": "$store_id"}, "count": {"$sum": 1}}},
+        {"$sort": {"_id.day_id": -1, "_id.store_id": 1}}
+    ]
+    observation_data = list(observations_coll.aggregate(pipeline))
+
+    all_days = sorted(list(set(item["_id"]["day_id"] for item in observation_data)), reverse=True)
+    all_stores = sorted(list(set(item["_id"]["store_id"] for item in observation_data)))
+
+    # Get processed statuses
+    gt_db = get_db()
+    clusters_coll = gt_db[CLUSTERS_COLL]
+    processed_keys = {
+        f"{doc['day_id']}-{doc['store_id']}"
+        for doc in clusters_coll.find(
+            {"day_id": {"$in": all_days}},
+            {"day_id": 1, "store_id": 1}
+        )
+    }
+
+    # Combine data
+    grid_data = []
+    for item in observation_data:
+        day = item["_id"]["day_id"]
+        store = item["_id"]["store_id"]
+        grid_data.append({
+            "day_id": day,
+            "store_id": store,
+            "count": item["count"],
+            "processed": f"{day}-{store}" in processed_keys
+        })
+
+    return {
+        "days": all_days,
+        "stores": all_stores,
+        "grid_data": grid_data
+    }
 
 @app.get("/api/image")
 def image_proxy(source: str = Query(..., description="gs:// URI or remote path to image")):

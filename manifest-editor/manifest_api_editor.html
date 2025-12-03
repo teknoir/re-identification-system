@@ -39,6 +39,7 @@
 <body>
   <header>
     <h1>Manifest API Editor</h1>
+    <a href="status_grid" style="color: white; margin-left: 20px;">Processing Status</a>
     <div id="status" class="status">No manifest loaded</div>
   </header>
   <main>
@@ -125,6 +126,23 @@
       document.getElementById("nextPageTop").addEventListener("click", () => changePage(state.page + 1));
       document.getElementById("prevPageBottom").addEventListener("click", () => changePage(state.page - 1));
       document.getElementById("nextPageBottom").addEventListener("click", () => changePage(state.page + 1));
+
+      // New logic to handle URL parameters for day_id and store_id
+      const urlParams = new URLSearchParams(window.location.search);
+      const dayId = urlParams.get('day_id');
+      const storeId = urlParams.get('store_id');
+      
+      if (dayId) {
+        document.getElementById('apiDay').value = dayId;
+      }
+      if (storeId) {
+        document.getElementById('apiStore').value = storeId;
+      }
+      
+      // Automatically load the manifest if both dayId and storeId are provided
+      if (dayId && storeId) {
+        loadFromApi(false);
+      }
     });
 
     function setStatus(msg){
