@@ -57,10 +57,11 @@ metadata:
 spec:
   repo: https://teknoir.github.io/re-identification-system
   chart: re-identification-system
-  version: 0.0.6
+  version: 0.0.7
   targetNamespace: ${NAMESPACE}
   valuesContent: |-
     basePath: /${NAMESPACE}/re-identification-system
+    manifestApiBaseUrl: https://${DOMAIN}/${NAMESPACE}/manifest-editor/api/manifest-proxy
     domain: ${DOMAIN}
     mediaServiceBaseUrl: https://${DOMAIN}/${NAMESPACE}/media-service/api
     image:
