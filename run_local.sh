@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 set -eo pipefail
+
+echo "Terminating any stale processes from previous runs..."
+pkill -f "uvicorn app:app --host 0.0.0.0 --port 8884" || true
+pkill -f "uvicorn manifest-editor.manifest_editor_server:app" || true
+pkill -f "npm run dev" || true
+pkill -f "kubectl.*port-forward" || true
+if [ -d "/tmp/reid" ]; then
+    rm -f /tmp/reid/{*.pid,*.log}
+fi
+echo "Stale process cleanup complete."
+
 #set -x
 
 POSITIONAL=()

@@ -47,7 +47,7 @@
         <label>Day <input type="text" id="apiDay" placeholder="YYYY-MM-DD" size="10"></label>
         <label>Store <input type="text" id="apiStore" placeholder="nc0009" size="10"></label>
         <button id="loadApiBtn" type="button">Load manifest</button>
-        <button id="forceLoadApiBtn" type="button">Force API manifest</button>
+        <button id="forceLoadApiBtn" type="button">Force manifest (API)</button>
       </div>
       <div class="toolbar-group">
         <select id="cameraFilter"><option value="">All cameras</option></select>
@@ -104,8 +104,8 @@
     }
 
     document.addEventListener("DOMContentLoaded", () => {
-      document.getElementById("loadApiBtn").addEventListener("click", loadFromApi);
-      document.getElementById("forceLoadApiBtn").addEventListener("click", forceLoadFromApi);
+      document.getElementById("loadApiBtn").addEventListener("click", () => loadFromApi(false));
+      document.getElementById("forceLoadApiBtn").addEventListener("click", () => loadFromApi(true));
       document.getElementById("search").addEventListener("input", e => { state.search = e.target.value.toLowerCase(); state.page = 1; render(); });
       document.getElementById("cameraFilter").addEventListener("change", e => { state.camera = e.target.value; state.page = 1; render(); });
       const hideExcludedEl = document.getElementById("hideExcluded");
@@ -131,7 +131,7 @@
       statusEl.textContent = msg;
     }
 
-    async function loadFromApi(){
+    async function loadFromApi(bypassMongo = false){
       const dayRaw = document.getElementById('apiDay').value.trim();
       const store = document.getElementById('apiStore').value.trim();
       const day = normalizeDay(dayRaw);
@@ -139,16 +139,21 @@
         alert("Enter day and store");
         return;
       }
-      setStatus(`Loading ${store}@${day}...`);
+      const statusPrefix = bypassMongo ? "Force Loading" : "Loading";
+      setStatus(`${statusPrefix} ${store}@${day}...`);
       showLoading(true);
       try{
-        const url = getApiUrl(`/api/manifest-proxy?day_id=${encodeURIComponent(day)}&store_id=${encodeURIComponent(store)}`);
+        let url = getApiUrl(`/api/manifest-proxy?day_id=${encodeURIComponent(day)}&store_id=${encodeURIComponent(store)}`);
+        if (bypassMongo) {
+          url += '&bypass_mongo=true';
+        }
         const resp = await fetch(url);
         if(!resp.ok){
           throw new Error(await resp.text() || resp.statusText);
         }
         const data = await resp.json();
-        setStatus(`Loaded manifest: ${data.person_count || (data.people||[]).length} people, ${data.event_count || 0} events (${data.source || 'api'})`);
+        const source = bypassMongo ? 'api (forced)' : (data.source || 'api');
+        setStatus(`Loaded manifest: ${data.person_count || (data.people||[]).length} people, ${data.event_count || 0} events (${source})`);
         applyManifest(
           {
             store_id: data.store_id || store,
@@ -156,46 +161,11 @@
             people: data.people || [],
             adjudicated: data.adjudicated
           },
-          `${store}@${day} (${data.source || 'api'})`
+          `${store}@${day} (${source})`
         );
       }catch(err){
         console.error(err);
         setStatus(`Load failed: ${err}`);
-      } finally {
-        showLoading(false);
-      }
-    }
-
-    async function forceLoadFromApi(){
-      const dayRaw = document.getElementById('apiDay').value.trim();
-      const store = document.getElementById('apiStore').value.trim();
-      const day = normalizeDay(dayRaw);
-      if(!day || !store){
-        alert("Enter day and store");
-        return;
-      }
-      setStatus(`Force Loading ${store}@${day} from matching-service API...`);
-      showLoading(true);
-      try{
-        const url = `http://localhost:8884/manifest?day_id=${encodeURIComponent(day)}&store_id=${encodeURIComponent(store)}`;
-        const resp = await fetch(url);
-        if(!resp.ok){
-          throw new Error(await resp.text() || resp.statusText);
-        }
-        const data = await resp.json();
-        setStatus(`Force Loaded manifest: ${data.person_count || (data.people||[]).length} people, ${data.event_count || 0} events (matching-service API)`);
-        applyManifest(
-          {
-            store_id: data.store_id || store,
-            day_id: data.day_id || day,
-            people: data.people || [],
-            adjudicated: data.adjudicated
-          },
-          `${store}@${day} (matching-service API)`
-        );
-      }catch(err){
-        console.error(err);
-        setStatus(`Force Load failed: ${err}`);
       } finally {
         showLoading(false);
       }

@@ -15,18 +15,24 @@ then (this also works to send api calls to the local instance):
 curl -G POST "http://0.0.0.0:8884/health"
 ```
 
+# Re-entry Matching Service (FAISS + Metric Encoder)
+
 This FastAPI service exposes a **query-then-add** endpoint that:
 1) encodes a new entry (multi-image ReID vectors + attrs) into a fused vector,
 2) queries today's FAISS index (top-K cosine),
 3) applies the runtime rule:
    - `match if (NN1 >= THRESHOLD) and ((NN1 - NN2) >= MARGIN)`,
 4) adds the entry to the index,
-5) persists raw inputs to Mongo (`re-id-mongo` instance in the `reid_service/observations` collection)
+5) (optionally) persists raw inputs to Mongo.
 
-
+## Requirements
+- Python 3.10+
+- A trained encoder checkpoint (`model.pt`) saved with:
+  - `vis_dim`, `attr_dim`, `emb_dim`, `use_attention`, `dropout`, `state_dict`
+- Attribute schema JSON (`attr_schema.json`) matching your normalized attrs.
 
 ## Configure (env vars)
-- `MODEL_CKPT` (default: `runs/metric_pk_v1/model.pt`) **NOTE: this is set for the 
+- `MODEL_CKPT` (default: `runs/metric_pk_v1/model.pt`)
 - `ATTR_SCHEMA` (default: `attr_schema.json`)
 - `MONGO_URI` (optional; empty disables Mongo persistence)
 - `MONGO_DB` (default: `retail_reid`)
@@ -42,8 +48,12 @@ Install dependencies (inside a virtualenv):
 python -m pip install -r requirements.txt
 ```
 
+Ensure your model checkpoint and schema paths are set (or use the defaults under `runs/` and `attr_schema.json`). If you want Mongo persistence, export `MONGO_URI` (and optionally `MONGO_DB`).
 
-
+Start the API:
+```bash
+uvicorn app:app --host 0.0.0.0 --port 8080 --log-level debug
+```
 Rebuild from mongo:
 ```bash
   curl -X POST http://0.0.0.0:8080/rebuild \
@@ -51,7 +61,7 @@ Rebuild from mongo:
     --data '{"day_id":"2025-11-06"}'
 ```
 
-On startup, the service loads the encoder weights into CPU memory and establishes the Mongo connection. After the process begins, you should rebuild the FAISS caches before serving traffic (at least for the current day):
+On startup, the service loads the encoder weights into CPU memory and establishes the Mongo connection (if configured). After the process begins, you should rebuild the FAISS caches before serving traffic (at least for the current day):
 ```bash
 curl -X POST http://0.0.0.0:8080/rebuild \
   -H "Content-Type: application/json" \
@@ -60,6 +70,29 @@ curl -X POST http://0.0.0.0:8080/rebuild \
 
 Repeat for each day/store combination you care about. Once rebuilt, the server is ready to accept `/match` requests.
 
+## Training the Metric Encoder
+
+Train the metric model (entry encoder)
+
+```bash
+export MODEL_RUN=metric_pk_v3-64-2
+export PK_P=64
+export PK_K=2
+export EPOCHS=400
+model/encoder/train_encoder.sh
+
+export MODEL_RUN=metric_pk_v3-32-4
+export PK_P=32
+export PK_K=4
+export EPOCHS=400
+model/encoder/train_encoder.sh
+
+export MODEL_RUN=metric_pk_v3-96-2
+export PK_P=96
+export PK_K=2
+export EPOCHS=400
+model/encoder/train_encoder.sh
+```
 
 ## Endpoints
 
@@ -80,8 +113,8 @@ Query-then-add for a single entry. Matching happens only within the same `(day_i
   "direction": "entry",
   "camera": "nc0211-front-door-1",
   "images": [
-    "gs://victra-poc.teknoir.cloud/media/lc-person-cutouts/2025-11-06/...",
-    "gs://victra-poc.teknoir.cloud/media/lc-person-cutouts/2025-11-06/..."
+    "gs://victra-poc.teknoir.cloud/media/lc-person-cutouts/2025-11-06/வுகளில்",
+    "gs://victra-poc.teknoir.cloud/media/lc-person-cutouts/2025-11-06/வுகளில்"
   ],
   "embeddings": [[...1024 floats...], [...], ...],
   "attrs": { "outerwear": "jacket", "outerwear_color": "red", "...": "..." },
@@ -98,8 +131,8 @@ Query-then-add for a single entry. Matching happens only within the same `(day_i
   "direction": "entry",
   "camera": "nc0211-front-door-1",
   "images": [
-    "gs://victra-poc.teknoir.cloud/media/lc-person-cutouts/2025-11-06/...",
-    "gs://victra-poc.teknoir.cloud/media/lc-person-cutouts/2025-11-06/..."
+    "gs://victra-poc.teknoir.cloud/media/lc-person-cutouts/2025-11-06/வுகளில்",
+    "gs://victra-poc.teknoir.cloud/media/lc-person-cutouts/2025-11-06/வுகளில்"
   ],
   "embeddings": [[...],[...]],
   "status": "match",
@@ -110,9 +143,9 @@ Query-then-add for a single entry. Matching happens only within the same `(day_i
 ```
 
 ### `POST /rebuild`
-Body: `{"day_id": "2025-11-06"}`
+Body: `{ "day_id": "2025-11-06" }`
 
-Clears the FAISS bucket for the specified day and repopulates it from MongoDB (`entries` collection) by re-encoding every persisted entry. Use this after restarting the service (or whenever you want to discard in-memory state) to reload the relevant day(s) before serving `/match`. Returns `{"ok": true, "count": N}` on success.
+Clears the FAISS bucket for the specified day and repopulates it from MongoDB (`entries` collection) by re-encoding every persisted entry. Use this after restarting the service (or whenever you want to discard in-memory state) to reload the relevant day(s) before serving `/match`. Returns `{ "ok": true, "count": N }` on success.
 
 ### `GET /manifest`
 Query params:
@@ -125,7 +158,7 @@ Returns the clustered manifest for the given day/store, using the same FAISS sim
 
 **Example**
 ```bash
-curl -G "http://0.0.0.0:8884/manifest" \
+curl -G "http://0.0.0.0:8080/manifest" \
   --data-urlencode "day_id=2025-11-06" \
   --data-urlencode "store_id=nc0009" \
   --data-urlencode "camera=nc0009-front-door" \
@@ -202,12 +235,50 @@ GET /manifest?day_id=2025-11-06&store_id=nc0009
 ### Combined entry pipeline
 Generates embeddings + VLM attrs and emits a ready-to-post `/match` payload:
 
-
-The following command should "just work" assuming you've executed `run_local.sh` which will point to the correct mongo instance (`re-id-mongo` historian/line-crossings). The line-crossing OBS pipeline should handle this automatically by publishing to `/match`
 ```bash
-python post_matches_from_mongo.py --day 2025-11-23 --store nc0211
+python entry_pipeline/process_entry.py \
+  --mongo-uri "mongodb://teknoir:98jgs2LdOQC2@localhost:27017/historian?authSource=admin" \
+  --mongo-collection line-crossings \
+  --alerts-collection alerts \
+  --entries-collection entries \
+  --bucket gs://victra-poc.teknoir.cloud \
+  --gcs-creds visual_embeddings/teknoir-c5ec5ebce12d.json \
+  --reid-endpoint http://localhost:8081 \
+  --vlm-model "projects/815276040543/locations/us-central1/endpoints/3211426074617446400" \
+  --output 2025-11-06/nc0211/nc0211-front-door-2/entry/nc0211-front-door-2-8c511b69-12794.json
 ```
 
+Batch version (process all cameras matching the prefix, in this case all cams for `nc0009`):
+```bash
+python entry_pipeline/batch_process_entries.py \
+  --prefix nc0009 \
+  --mongo-uri "mongodb://teknoir:98jgs2LdOQC2@localhost:27017/historian?authSource=admin" \
+  --mongo-collection line-crossings \
+  --alerts-collection alerts \
+  --entries-collection entries \
+  --bucket gs://victra-poc.teknoir.cloud \
+  --gcs-creds visual_embeddings/teknoir-c5ec5ebce12d.json \
+  --reid-endpoint http://localhost:8081 \
+  --vlm-model "projects/815276040543/locations/us-central1/endpoints/3211426074617446400" \
+  --day 2025-11-06 \
+  --output-root payloads \
+  --skip-existing
+```
+
+### Posting to `/match`
+Use CURL for ad-hoc testing:
+```bash
+curl -X POST http://0.0.0.0:8080/match \
+  -H "Content-Type: application/json" \
+  --data-binary @payloads/2025-11-06/nc0211/nc0211-front-door-2/entry/nc0211-front-door-2-8c511b69-12794.json
+```
+For batches of payloads, use the helper script:
+```bash
+python entry_pipeline/post_payloads.py payloads/2025-11-06 \
+  --match-url http://0.0.0.0:8080/match \
+  --timeout 15
+# add --dry-run to preview without posting
+```
 
 ### GT pair reviewer (FastAPI + web UI)
 Use the pair reviewer to inspect `gt/pairs_hard.csv` with the corresponding GT manifests before finalizing ground-truth labels.
@@ -366,16 +437,12 @@ Visual Path:
     ↓
   AttentiveSetPool/MeanPool
     ↓
-  Linear(Dv → 512) + ReLU + Dropout
-    ↓
-  Linear(512 → emb_dim)
+  Linear(Dv → emb_dim)
 
 Attribute Path:
   Attribute vector (Da)
     ↓
-  Linear(Da → 256) + ReLU + Dropout
-    ↓
-  Linear(256 → emb_dim)
+  Linear(Da → emb_dim)
 
 Fusion:
   [Visual_emb, Attr_emb]
@@ -426,7 +493,13 @@ This loss function focuses training on the most challenging cases, improving dis
 
 3. **Matching**:
    - Query FAISS index (one per day) with K=20 nearest neighbors
-   - Apply threshold (0.88) on cosine similarity
-   - If similarity > threshold: Same person (re-entry)
+   - Apply runtime rule on the top-2 neighbors (NN1, NN2):
+   - Match if (NN1 >= 0.88) and ((NN1 - NN2) >= 0.02)
    - Otherwise: New person
 
+### Performance Considerations
+
+- **Embedding dimension**: 128 provides good balance of accuracy and speed
+- **Attention pooling**: ~5% accuracy improvement over mean pooling
+- **Attribute features**: ~3-7% improvement, especially for similar-looking people
+- **Hard triplet loss**: Faster convergence and better boundary discrimination than contrastive loss

@@ -281,13 +281,15 @@ def manifest_proxy(
     store_id: str,
     entry_id: Optional[str] = None,
     camera: Optional[List[str]] = Query(None),
+    bypass_mongo: bool = Query(False, description="Bypass mongo check and go straight to the API"),
 ):
     # First try Mongo; fall back to API if not found
-    try:
-        mongo_data = read_manifest_from_mongo(store_id, day_id)
-        return mongo_data
-    except Exception:
-        pass
+    if not bypass_mongo:
+        try:
+            mongo_data = read_manifest_from_mongo(store_id, day_id)
+            return mongo_data
+        except Exception:
+            pass
 
     base = MANIFEST_API_BASE
     params = [("day_id", day_id), ("store_id", store_id)]
