@@ -208,7 +208,7 @@ class ReEntryMatcher:
                 "vis": {"per_image_dim": len(embeddings[0]) if embeddings else 0, "embeddings": embeddings},
                 "attrs": attrs or {},
             }
-            self.db.entries.replace_one({"_id": entry_id}, doc, upsert=True)
+            self.db[self.entries_collection].replace_one({"_id": entry_id}, doc, upsert=True)
 
         return decision
 

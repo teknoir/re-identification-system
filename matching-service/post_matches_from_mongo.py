@@ -78,7 +78,7 @@ if __name__ == "__main__":
         default="mongodb://teknoir:change-me@localhost:37017/historian?authSource=admin",
     )
     parser.add_argument("--mongo-db", default="historian")
-    parser.add_argument("--entries-collection", default="entries")
+    # parser.add_argument("--entries-collection", default="entries")
     parser.add_argument("--match-url", default="http://0.0.0.0:8884/match")
 
     args = parser.parse_args()
