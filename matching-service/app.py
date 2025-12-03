@@ -1,11 +1,15 @@
 # app.py
 import os
+import logging
+
+logging.basicConfig(level=logging.INFO)
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from matcher import ReEntryMatcher
 
+# BE SURE TO MAKE SURE THIS MATCHES THE MODEL_CKPT IN THE run_local.sh file
 MODEL_CKPT = os.getenv("MODEL_CKPT", "matching-service/models/encoder/model.pt")
 ATTR_SCHEMA = os.getenv("ATTR_SCHEMA", "attr_schema.json")
 BUCKET_PREFIX = os.getenv("BUCKET_PREFIX", "gs://victra-poc.teknoir.cloud")

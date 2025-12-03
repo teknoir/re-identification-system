@@ -250,15 +250,21 @@ def _resolve_image_uri(source: str) -> str:
 @app.get("/api/image")
 def image_proxy(source: str = Query(..., description="gs:// URI or remote path to image")):
     uri = _resolve_image_uri(source)
-    if uri.startswith("gs://"):
-        data = download_blob_bytes(uri)
-    else:
-        resp = requests.get(uri, timeout=30)
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=f"Failed to fetch remote image: {uri}")
-        data = resp.content
-    mime = mimetypes.guess_type(uri)[0] or "image/jpeg"
-    return StreamingResponse(iter([data]), media_type=mime)
+    try:
+        if uri.startswith("gs://"):
+            data = download_blob_bytes(uri)
+        else:
+            resp = requests.get(uri, timeout=30)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail=f"Failed to fetch remote image: {uri}")
+            data = resp.content
+        mime = mimetypes.guess_type(uri)[0] or "image/jpeg"
+        return StreamingResponse(iter([data]), media_type=mime)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        # Catch any other unexpected errors during image fetching
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while fetching image: {str(e)}")
 
 
 @app.get("/api/manifest-proxy")

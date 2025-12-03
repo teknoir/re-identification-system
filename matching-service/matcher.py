@@ -15,6 +15,9 @@ import numpy as np
 from pymongo import MongoClient
 from metric_model import EntryEncoder
 from data_utils import load_attr_schema, vec_from_schema, l2norm_np
+import json
+from pathlib import Path
+import logging
 
 class DayIndex:
     def __init__(self, dim: int):
@@ -28,6 +31,20 @@ class DayIndex:
     def search(self, vec: np.ndarray, topk: int) -> Tuple[np.ndarray, np.ndarray, List[str]]:
         D, I = self.index.search(vec.reshape(1, -1).astype(np.float32), topk)
         return D[0], I[0], self.ids
+    
+    def save(self, index_path: Path, data_path: Path, entry_count: int):
+        faiss.write_index(self.index, str(index_path))
+        with open(data_path, "w") as f:
+            json.dump({"ids": self.ids, "entry_count": entry_count}, f)
+
+    @classmethod
+    def load(cls, index_path: Path, data_path: Path, dim: int) -> "DayIndex":
+        day_index = cls(dim)
+        day_index.index = faiss.read_index(str(index_path))
+        with open(data_path, "r") as f:
+            data = json.load(f)
+            day_index.ids = data["ids"]
+        return day_index
 
 class ReEntryMatcher:
     def __init__(
@@ -66,6 +83,51 @@ class ReEntryMatcher:
         self.events_collection = events_collection
         self.entries_collection = entries_collection
 
+        self.cache_dir = Path("matching-service/cache")
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_entry_count(self, day_id: str, store_id: str) -> int:
+        if self.db is None:
+            return 0
+        return self.db[self.entries_collection].count_documents({"day_id": day_id, "store_id": store_id})
+
+    def save_to_cache(self, day_id: str, store_id: str):
+        day_store = self.by_day_store.get(day_id, {})
+        day_index = day_store.get(store_id)
+        if not day_index:
+            return
+
+        entry_count = self.get_entry_count(day_id, store_id)
+        
+        index_path = self.cache_dir / f"{day_id}_{store_id}.index"
+        data_path = self.cache_dir / f"{day_id}_{store_id}.json"
+        
+        day_index.save(index_path, data_path, entry_count)
+
+    def load_from_cache(self, day_id: str, store_id: str) -> bool:
+        index_path = self.cache_dir / f"{day_id}_{store_id}.index"
+        data_path = self.cache_dir / f"{day_id}_{store_id}.json"
+
+        if not index_path.exists() or not data_path.exists():
+            return False
+
+        with open(data_path, "r") as f:
+            data = json.load(f)
+
+        # Cache invalidation check
+        entry_count = data.get("entry_count", -1)
+        if self.get_entry_count(day_id, store_id) != entry_count:
+            logging.info(f"Cache invalid for day {day_id}, store {store_id}. Rebuilding.")
+            return False
+            
+        day_index = DayIndex.load(index_path, data_path, self.dim)
+        
+        day = self.by_day_store.setdefault(day_id, {})
+        day[store_id] = day_index
+        
+        logging.info(f"Loaded index for day {day_id}, store {store_id} from cache.")
+        return True
+
     @staticmethod
     def _store_from_entry(entry_id: str) -> str:
         return entry_id.split("-", 1)[0] if entry_id else "unknown-store"
@@ -103,6 +165,13 @@ class ReEntryMatcher:
         persist: bool = True,
     ) -> Dict[str, Any]:
         resolved_store = store_id or self._store_from_entry(entry_id)
+
+        # Check if index is in memory, if not, try to load from cache or rebuild
+        if self.by_day_store.get(day_id, {}).get(resolved_store):
+            logging.info(f"Using in-memory index for day {day_id}, store {resolved_store}.")
+        elif not self.load_from_cache(day_id, resolved_store):
+            self.rebuild_from_mongo(day_id)
+
         idx = self.ensure_day_store(day_id, resolved_store)
 
         z = self.encode_entry(embeddings, attrs)
@@ -121,6 +190,9 @@ class ReEntryMatcher:
 
         # add to FAISS
         idx.add(z, entry_id)
+
+        # save to cache after adding
+        self.save_to_cache(day_id, resolved_store)
 
         # optional persistence (raw inputs)
         if persist and self.db is not None:
@@ -141,14 +213,17 @@ class ReEntryMatcher:
         return decision
 
     def rebuild_from_mongo(self, day_id: str) -> Dict[str, Any]:
+        logging.info(f"Rebuilding index for day {day_id} from Mongo.")
         if self.db is None:
             return {"ok": False, "error": "Mongo not configured"}
         self.by_day_store[day_id] = {}
         cur = self.db[self.entries_collection].find({"day_id": day_id}, {"_id": 1, "store_id": 1, "vis.embeddings": 1, "attrs": 1, "images": 1})
         cnt = 0
+        stores_rebuilt = set()
         for doc in cur:
             eid = doc["_id"]
             store = doc.get("store_id") or self._store_from_entry(eid)
+            stores_rebuilt.add(store)
             idx = self.ensure_day_store(day_id, store)
             embs = doc.get("vis", {}).get("embeddings") or []
             attrs = doc.get("attrs") or {}
@@ -157,6 +232,10 @@ class ReEntryMatcher:
             z = self.encode_entry(embs, attrs)
             idx.add(z, eid)
             cnt += 1
+        
+        for store_id in stores_rebuilt:
+            self.save_to_cache(day_id, store_id)
+            
         return {"ok": True, "count": cnt}
 
     @staticmethod
@@ -197,6 +276,13 @@ class ReEntryMatcher:
     def build_manifest(self, day_id: str, store_id: str, entry_id: Optional[str] = None, cameras: Optional[List[str]] = None) -> Dict[str, Any]:
         if self.db is None:
             raise ValueError("Mongo not configured")
+
+        # Check if index is in memory, if not, try to load from cache or rebuild
+        if self.by_day_store.get(day_id, {}).get(store_id):
+            logging.info(f"Using in-memory index for day {day_id}, store {store_id}.")
+        elif not self.load_from_cache(day_id, store_id):
+            self.rebuild_from_mongo(day_id)
+
         query = {"day_id": day_id, "store_id": store_id}
         if cameras:
             query["camera"] = {"$in": cameras}
