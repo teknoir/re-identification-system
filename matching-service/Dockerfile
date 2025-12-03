@@ -27,23 +27,14 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 # Copy source
 COPY . /app/matching-service
 
-# Runtime environment defaults (override with -e)
-ENV MODEL_CKPT="matching-service/models/encoder/model.pt" \
-    ATTR_SCHEMA="attr_schema.json" \
-    BUCKET_PREFIX="gs://victra-poc.teknoir.cloud" \
-    REID_MONGODB_URI="mongodb://teknoir:change-me@localhost:37017" \
-    MONGO_DB="reid_service" \
-    MONGO_ENTRIES_COLLECTION="observations" \
-    MONGO_EVENTS_COLLECTION="line-crossings" \
-    THRESHOLD="0.753" \
-    TOPK="20"
-
 EXPOSE 8000
 
 # Healthcheck to fail container if service unresponsive
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://localhost:8000/health || exit 1
 
+# Ensure /app is owned by appuser
+RUN chown -R appuser:appuser /app
 USER appuser
 
 # Start FastAPI via uvicorn

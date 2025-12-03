@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eo pipefail
+set -e
 #set -x
 
 POSITIONAL=()
@@ -21,7 +21,8 @@ esac
 done
 
 if [ -z "$TARGET" ]; then
-    TARGET="demonstrations"
+    # Default target if none provided
+    TARGET="victra-poc"
 fi
 
 # Build the Docker images first

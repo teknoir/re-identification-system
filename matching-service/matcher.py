@@ -13,8 +13,8 @@ import torch
 import faiss
 import numpy as np
 from pymongo import MongoClient
-from metric_model import EntryEncoder
-from data_utils import load_attr_schema, vec_from_schema, l2norm_np
+from .metric_model import EntryEncoder
+from .data_utils import load_attr_schema, vec_from_schema, l2norm_np
 import json
 from pathlib import Path
 import logging

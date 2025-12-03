@@ -87,6 +87,11 @@
   </main>
 
   <script>
+    // Base URL helpers
+    const BASE = (window.BASE_URL || "").replace(/\/+$/,'');
+    const EDITOR_BASE = `${BASE}/manifest-editor`;
+    const getApiUrl = (path) => `${EDITOR_BASE}${path}`;
+
     const PAGE_SIZE = 100;
     const state = { store:"", day:"", people:[], nextId:1, search:"", camera:"", hideExcluded:true, selected:new Set(), showAttrs:false, adjudicated:false, page:1 };
     const statusEl = document.getElementById("status");
@@ -137,7 +142,7 @@
       setStatus(`Loading ${store}@${day}...`);
       showLoading(true);
       try{
-        const url = `/api/manifest-proxy?day_id=${encodeURIComponent(day)}&store_id=${encodeURIComponent(store)}`;
+        const url = getApiUrl(`/api/manifest-proxy?day_id=${encodeURIComponent(day)}&store_id=${encodeURIComponent(store)}`);
         const resp = await fetch(url);
         if(!resp.ok){
           throw new Error(await resp.text() || resp.statusText);
@@ -411,7 +416,7 @@
     function resolveImage(uri){
       if(!uri) return "";
       if(uri.startsWith("http") || uri.startsWith("data:")) return uri;
-      return `/api/image?source=${encodeURIComponent(uri)}`;
+      return getApiUrl(`/api/image?source=${encodeURIComponent(uri)}`);
     }
 
     function renderAttrs(attrs){
@@ -489,7 +494,7 @@
           people: state.people,
           adjudicated: state.adjudicated
         };
-        const resp = await fetch("/api/editor-state", {
+        const resp = await fetch(getApiUrl("/api/editor-state"), {
           method:"POST",
           headers: {"Content-Type":"application/json"},
           body: JSON.stringify(payload)

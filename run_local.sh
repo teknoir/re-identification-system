@@ -198,7 +198,7 @@ source .venv/bin/activate
 if ! check_service_running "matching-service" 8884; then
     export BUCKET_PREFIX="gs://${NAMESPACE}.${DOMAIN}"
     export REID_MONGODB_URI=${REID_MONGODB_URI}
-    start_local_service "matching-service" "(cd matching-service && MODEL_CKPT='models/encoder/model.pt' uvicorn app:app --host 0.0.0.0 --port 8884)"
+    start_local_service "matching-service" "uvicorn matching-service.app:app --host 0.0.0.0 --port 8884"
 fi
 if ! check_service_running "manifest-editor" 8883; then
     export MANIFEST_API_BASE=http://localhost:8884

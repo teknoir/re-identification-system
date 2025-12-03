@@ -71,6 +71,11 @@
   </main>
 
   <script>
+    // Base URL helpers
+    const BASE = (window.BASE_URL || "").replace(/\/+$/,'');
+    const EDITOR_BASE = `${BASE}/manifest-editor`;
+    const getApiUrl = (path) => `${EDITOR_BASE}${path}`;
+
     const state = { store:"", day:"", people:[], nextId:1, search:"", camera:"", hideExcluded:false, selected:new Set(), showAttrs:false };
     let pendingScrollAnchor = null;
     const statusEl = document.getElementById("status");
@@ -119,8 +124,8 @@
       fd.append("file", file);
       try{
         setStatus(`Uploading ${file.name}...`);
-        console.log("[manifest] POST /api/manifest/upload");
-        const resp = await fetch("/api/manifest/upload", {method:"POST", body:fd});
+        console.log("[manifest] POST", getApiUrl("/api/manifest/upload"));
+        const resp = await fetch(getApiUrl("/api/manifest/upload"), {method:"POST", body:fd});
         if(!resp.ok){
           const text = await resp.text();
           console.error("[manifest] upload failed", resp.status, text);
@@ -137,8 +142,8 @@
     async function loadFromSource(source){
       try{
         setStatus(`Loading ${source}...`);
-        console.log("[manifest] POST /api/manifest/from-source", source);
-        const resp = await fetch("/api/manifest/from-source", {
+        console.log("[manifest] POST", getApiUrl("/api/manifest/from-source"), source);
+        const resp = await fetch(getApiUrl("/api/manifest/from-source"), {
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({source})
@@ -159,7 +164,7 @@
     async function loadSavedProgress(silent=false){
       try{
         if(!silent) setStatus("Loading saved progress...");
-        const resp = await fetch("/api/editor-state");
+        const resp = await fetch(getApiUrl("/api/editor-state"));
         if(!resp.ok){
           const text = await resp.text();
           throw new Error(text || resp.statusText);
@@ -184,7 +189,7 @@
       try{
         const snapshot = snapshotState();
         setStatus("Saving progress...");
-        const resp = await fetch("/api/editor-state", {
+        const resp = await fetch(getApiUrl("/api/editor-state"), {
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify(snapshot)
@@ -541,7 +546,7 @@
 
     function resolveImage(uri){
       if(uri && (uri.startsWith("data:") || uri.startsWith("http"))) return uri;
-      return `/api/image?source=${encodeURIComponent(uri)}`;
+      return getApiUrl(`/api/image?source=${encodeURIComponent(uri)}`);
     }
 
     let thumbObserver = null;
