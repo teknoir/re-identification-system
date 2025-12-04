@@ -23,7 +23,7 @@ ENCODER_VIEWER_PATH = Path(__file__).with_name("encoder_dataset_viewer.html")
 GT_EDITOR_PATH = Path(__file__).with_name("gt_editor.html")
 STATUS_GRID_PATH = Path(__file__).with_name("processing_status.html")
 ENCODER_STATIC_DIR = ROOT / "model" / "encoder" / "runs"
-STATE_PATH = Path(os.getenv("MANIFEST_EDITOR_STATE", ROOT / "gt/manifest_editor_state.json"))
+STATE_PATH = Path(os.getenv("MANIFEST_EDITOR_STATE", "/tmp/gt/manifest_editor_state.json"))
 MANIFEST_API_BASE = os.getenv("MANIFEST_API_BASE", "http://matching-service")
 BLOB_BASE = os.getenv("MANIFEST_EDITOR_BUCKET", "gs://victra-poc.teknoir.cloud")  # optional prefix for relative files
 BASE_URL =  os.getenv("BASE_URL", "/")  # optional base url
@@ -306,27 +306,32 @@ def grid_status(
     all_days = sorted(list(set(item["_id"]["day_id"] for item in observation_data)), reverse=True)
     all_stores = sorted(list(set(item["_id"]["store_id"] for item in observation_data)))
 
-    # Get processed statuses
+    # Get processed and adjudicated statuses
     gt_db = get_manifest_editor_db()
     clusters_coll = gt_db[CLUSTERS_COLL]
-    processed_keys = {
-        f"{doc['day_id']}-{doc['store_id']}"
-        for doc in clusters_coll.find(
-            {"day_id": {"$in": all_days}},
-            {"day_id": 1, "store_id": 1}
-        )
-    }
+    status_map = {}
+    for doc in clusters_coll.find(
+        {"day_id": {"$in": all_days}},
+        {"day_id": 1, "store_id": 1, "adjudicated": 1}
+    ):
+        key = f"{doc['day_id']}-{doc['store_id']}"
+        if doc.get('adjudicated'):
+            status_map[key] = "adjudicated"
+        else:
+            status_map[key] = "processed"
 
     # Combine data
     grid_data = []
     for item in observation_data:
         day = item["_id"]["day_id"]
         store = item["_id"]["store_id"]
+        key = f"{day}-{store}"
+        status = status_map.get(key, "none")
         grid_data.append({
             "day_id": day,
             "store_id": store,
             "count": item["count"],
-            "processed": f"{day}-{store}" in processed_keys
+            "status": status
         })
 
     return {

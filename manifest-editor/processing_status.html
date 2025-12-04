@@ -18,8 +18,9 @@
     table { border-collapse: collapse; width: 100%; font-size: 12px; }
     th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: center; }
     th { background: #f8fafc; }
-    td.processed { background-color: #dcfce7; }
-    td.not-processed { background-color: #f1f5f9; }
+    td.adjudicated { background-color: #dcfce7; } /* Green */
+    td.processed { background-color: #fef9c3; } /* Yellow */
+    td.none { background-color: #f1f5f9; } /* Gray */
     td a { color: #1d4ed8; text-decoration: none; }
     td a:hover { text-decoration: underline; }
     #status { margin-top: 10px; font-style: italic; color: #64748b; }
@@ -110,7 +111,7 @@
         stores.forEach(store => {
           const item = dataMap.get(`${day}-${store}`);
           if (item) {
-            const cellClass = item.processed ? 'processed' : 'not-processed';
+            const cellClass = item.status; // status can be 'adjudicated', 'processed', or 'none'
             const manifestEditorUrl = getApiUrl(`/manifest_editor?day_id=${day}&store_id=${store}`);
             const cellContent = `<a href="${manifestEditorUrl}" target="_blank">${item.count}</a>`;
             table += `<td class="${cellClass}">${cellContent}</td>`;
