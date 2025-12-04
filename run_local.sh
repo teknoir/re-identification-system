@@ -214,8 +214,8 @@ fi
 if ! check_service_running "manifest-editor" 8883; then
     export MANIFEST_API_BASE=http://localhost:8884
     export MANIFEST_API_TIMEOUT_SECONDS=120
-    export MANIFEST_EDITOR_MONGO=${REID_MONGODB_URI}
     export MANIFEST_EDITOR_BUCKET="gs://${NAMESPACE}.${DOMAIN}"
+    export REID_MONGODB_URI=${REID_MONGODB_URI}
     start_local_service "manifest-editor" "uvicorn manifest-editor.manifest_editor_server:app --host 0.0.0.0 --port 8883 --workers 1"
 fi
 

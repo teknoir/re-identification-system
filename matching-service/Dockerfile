@@ -17,13 +17,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --create-home --shell /bin/bash appuser
 WORKDIR /app/matching-service
 
+# Copy requirements
+COPY requirements.txt /app/matching-service/requirements.txt
+# Install Python deps (replace / extend as needed; prefer requirements.txt if available)
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
 # Copy source
 COPY . /app/matching-service
-
-# Install Python deps (replace / extend as needed; prefer requirements.txt if available)
-# If a requirements.txt exists you can replace this with: COPY requirements.txt . && pip install -r requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 EXPOSE 8000
 

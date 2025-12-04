@@ -25,14 +25,16 @@ STATUS_GRID_PATH = Path(__file__).with_name("processing_status.html")
 ENCODER_STATIC_DIR = ROOT / "model" / "encoder" / "runs"
 STATE_PATH = Path(os.getenv("MANIFEST_EDITOR_STATE", ROOT / "gt/manifest_editor_state.json"))
 MANIFEST_API_BASE = os.getenv("MANIFEST_API_BASE", "http://matching-service")
-MONGO_URI = os.getenv("MANIFEST_EDITOR_MONGO", "mongodb://teknoir:change-me@localhost:37017")
-MONGO_DB = os.getenv("MANIFEST_EDITOR_DB", "gt_tools")
-ENTRIES_COLL = os.getenv("MANIFEST_EDITOR_ENTRIES_COLL", "entries")
-CLUSTERS_COLL = os.getenv("MANIFEST_EDITOR_CLUSTERS_COLL", "clusters")
-GT_COLL = os.getenv("MANIFEST_EDITOR_GT_COLL", "map")
 BLOB_BASE = os.getenv("MANIFEST_EDITOR_BUCKET", "gs://victra-poc.teknoir.cloud")  # optional prefix for relative files
 BASE_URL =  os.getenv("BASE_URL", "/")  # optional base url
 MANIFEST_API_TIMEOUT_SECONDS = int(os.getenv("MANIFEST_API_TIMEOUT_SECONDS", "60"))
+REID_MONGO_URI = os.getenv("REID_MONGODB_URI", "mongodb://teknoir:change-me@localhost:37017")
+REID_MONGO_DB = "reid_service"
+OBSERVATIONS_COLL = "observations"
+MANIFEST_EDITOR_DB = os.getenv("MANIFEST_EDITOR_DB", "gt_tools")
+ENTRIES_COLL = os.getenv("MANIFEST_EDITOR_ENTRIES_COLL", "entries")
+CLUSTERS_COLL = os.getenv("MANIFEST_EDITOR_CLUSTERS_COLL", "clusters")
+GT_COLL = os.getenv("MANIFEST_EDITOR_GT_COLL", "map")
 
 import sys  # noqa: E402
 if str(ROOT) not in sys.path:
@@ -51,17 +53,15 @@ app.add_middleware(
 mongo_client: Optional[MongoClient] = None
 
 
-def get_db():
+def get_manifest_editor_db():
     global mongo_client
     if mongo_client is None:
-        mongo_client = MongoClient(MONGO_URI)
-    return mongo_client[MONGO_DB]
+        mongo_client = MongoClient(REID_MONGO_URI)
+    return mongo_client[MANIFEST_EDITOR_DB]
 
 
 reid_mongo_client: Optional[MongoClient] = None
-REID_MONGO_URI = os.getenv("REID_MONGODB_URI", "mongodb://teknoir:change-me@localhost:37017")
-REID_MONGO_DB = "reid_service"
-OBSERVATIONS_COLL = "observations"
+
 
 def get_reid_db():
     global reid_mongo_client
@@ -93,7 +93,7 @@ def normalize_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def upsert_entries(entries: List[Dict[str, Any]]) -> List[str]:
-    db = get_db()
+    db = get_manifest_editor_db()
     coll = db[ENTRIES_COLL]
     now = datetime.utcnow()
     seen: List[str] = []
@@ -127,7 +127,7 @@ def upsert_entries(entries: List[Dict[str, Any]]) -> List[str]:
 
 
 def upsert_cluster(store_id: str, day_id: str, persons_map: Dict[str, Any], adjudicated: bool = False):
-    db = get_db()
+    db = get_manifest_editor_db()
     coll = db[CLUSTERS_COLL]
     key = f"{store_id}-{day_id}"
     doc = {
@@ -148,7 +148,7 @@ def normalize_flag_value(value: Any) -> bool:
 
 
 def read_manifest_from_mongo(store_id: str, day_id: str) -> Dict[str, Any]:
-    db = get_db()
+    db = get_manifest_editor_db()
     clusters = db[CLUSTERS_COLL]
     entries_coll = db[ENTRIES_COLL]
     key = f"{store_id}-{day_id}"
@@ -307,7 +307,7 @@ def grid_status(
     all_stores = sorted(list(set(item["_id"]["store_id"] for item in observation_data)))
 
     # Get processed statuses
-    gt_db = get_db()
+    gt_db = get_manifest_editor_db()
     clusters_coll = gt_db[CLUSTERS_COLL]
     processed_keys = {
         f"{doc['day_id']}-{doc['store_id']}"
@@ -390,7 +390,7 @@ def manifest_proxy(
 
 @app.get("/api/gt")
 def get_ground_truth(store_id: str, day_id: str):
-    db = get_db()
+    db = get_manifest_editor_db()
     gt_coll = db[GT_COLL]
     entries_coll = db[ENTRIES_COLL]
     key = f"{store_id}-{day_id}"
@@ -456,7 +456,7 @@ def update_gt_flags(payload: Dict[str, Any] = Body(...)):
     removals = payload.get("remove_entries") or []
     if not isinstance(flags, dict):
         raise HTTPException(status_code=400, detail="flags must be an object of entry_id -> bool")
-    db = get_db()
+    db = get_manifest_editor_db()
     gt_coll = db[GT_COLL]
     key = f"{store_id}-{day_id}"
     doc = gt_coll.find_one({"_id": key})
@@ -477,7 +477,7 @@ def update_gt_flags(payload: Dict[str, Any] = Body(...)):
 
 @app.get("/api/gt/index")
 def list_gt_docs():
-    db = get_db()
+    db = get_manifest_editor_db()
     gt_coll = db[GT_COLL]
     stores = sorted({doc["store_id"] for doc in gt_coll.find({}, {"store_id": 1}) if doc.get("store_id")})
     days = sorted({doc["day_id"] for doc in gt_coll.find({}, {"day_id": 1}) if doc.get("day_id")})
@@ -541,7 +541,7 @@ def save_editor_state(payload: Dict[str, Any] = Body(...)):
     if all_entries:
         seen_ids = upsert_entries(all_entries)
         # remove stale entries for this store/day
-        get_db()[ENTRIES_COLL].delete_many({"store_id": store_id, "day_id": day_id, "_id": {"$nin": seen_ids}})
+        get_manifest_editor_db()[ENTRIES_COLL].delete_many({"store_id": store_id, "day_id": day_id, "_id": {"$nin": seen_ids}})
     if persons_map:
         upsert_cluster(store_id, day_id, persons_map, adjudicated=adjudicated)
 

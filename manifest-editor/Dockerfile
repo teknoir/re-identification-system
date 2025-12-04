@@ -16,17 +16,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --create-home --shell /bin/bash appuser
 WORKDIR /app
 
-# Install runtime Python dependencies
-# Note: Requirements are inferred from the server imports.
-RUN pip install --no-cache-dir \
-    uvicorn[standard] \
-    fastapi \
-    requests \
-    pymongo \
-    google-cloud-storage
+# Copy requirements
+COPY requirements.txt /app/manifest-editor/requirements.txt
+# Install Python deps (replace / extend as needed; prefer requirements.txt if available)
+RUN pip install --upgrade pip && pip install --no-cache-dir -r ./manifest-editor/requirements.txt
 
-# Copy only the manifest editor and its parent package
-# If you build from the repo root, this copies the entire project.
+# Copy source
 COPY . /app/manifest-editor
 
 # Expose service port
