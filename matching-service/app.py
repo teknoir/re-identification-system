@@ -18,6 +18,9 @@ MONGO_DB     = os.getenv("MONGO_DB", "reid_service")
 MONGO_ENTRIES_COLLECTION = os.getenv("MONGO_ENTRIES_COLLECTION", "observations")
 MONGO_EVENTS_COLLECTION = os.getenv("MONGO_EVENTS_COLLECTION", "line-crossings")
 
+
+FUSION_MODE = "xattn"
+# FUSION_MODE = "baseline"
 MARGIN    = float(os.getenv("MARGIN", "0.02"))
 THRESHOLD = float(os.getenv("THRESHOLD", "0.88"))
 TOPK      = int(os.getenv("TOPK", "20"))

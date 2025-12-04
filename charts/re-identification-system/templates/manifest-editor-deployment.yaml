@@ -35,6 +35,11 @@ spec:
                 secretKeyRef:
                   name: re-id-mongo
                   key: uri
+            - name: REID_MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: re-id-mongo
+                  key: uri
           resources:
             requests:
               cpu: 250m

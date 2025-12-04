@@ -61,7 +61,7 @@ spec:
   targetNamespace: ${NAMESPACE}
   valuesContent: |-
     basePath: /${NAMESPACE}/re-identification-system
-    manifestApiBaseUrl: https://${DOMAIN}/${NAMESPACE}/manifest-editor/api/manifest-proxy
+    manifestApiBaseUrl: http://matching-service
     domain: ${DOMAIN}
     mediaServiceBaseUrl: https://${DOMAIN}/${NAMESPACE}/media-service/api
     image:

@@ -8,12 +8,14 @@ os.environ.setdefault("NUMPY_SKIP_MAC_OS_CHECK", "1")
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("KMP_INIT_AT_FORK", "FALSE")
 os.environ.setdefault("OMP_NUM_THREADS", os.environ.get("OMP_NUM_THREADS", "1"))
+fusion_mode ="xattn"
+
 
 import torch
 import faiss
 import numpy as np
 from pymongo import MongoClient
-from metric_model import EntryEncoder
+from metric_model import EntryEncoder, CrossAttentionEntryEncoder
 from data_utils import load_attr_schema, vec_from_schema, l2norm_np
 import json
 from pathlib import Path
@@ -61,7 +63,27 @@ class ReEntryMatcher:
     ):
         # load model
         ck = torch.load(model_ckpt_path, map_location="cpu")
-        self.model = EntryEncoder(ck["vis_dim"], ck["attr_dim"], ck["emb_dim"], ck["use_attention"], ck["dropout"])
+        # self.model = EntryEncoder(ck["vis_dim"], ck["attr_dim"], ck["emb_dim"], ck["use_attention"], ck["dropout"])
+
+        if fusion_mode == "xattn":
+            self.model = CrossAttentionEntryEncoder(
+                ck["vis_dim"],
+                ck["attr_dim"],
+                ck["emb_dim"],
+                ck["use_attention"],
+                ck["dropout"],
+            )
+        else:
+            self.model = EntryEncoder(
+                ck["vis_dim"],
+                ck["attr_dim"],
+                ck["emb_dim"],
+                ck["use_attention"],
+                ck["dropout"],
+            )
+
+        self.model.load_state_dict(ck["state_dict"])
+
         self.model.load_state_dict(ck["state_dict"])
         self.model.eval()
         torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "1")))
