@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ground-Truth Browser</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; background: #f5f6fb; color: #111827; }
+    header { background: #0f172a; color: #fff; padding: 18px 24px; display: flex; align-items: center; gap: 24px; }
+    header h1 { margin: 0; font-size: 20px; }
+    header a { color: #fff; text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+    main { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08); margin-bottom: 16px; }
+    .toolbar { display: flex; gap: 12px; align-items: center; }
+    select, input[type="text"], button { padding: 7px 12px; border-radius: 6px; border: 1px solid #cbd5f5; font-size: 13px; }
+    button { cursor: pointer; background: #334155; color: #fff; border: none; }
+    .pager { display: flex; align-items: center; gap: 8px; }
+    #people { display: flex; flex-direction: column; gap: 16px; }
+    .person { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
+    .person-head { margin-bottom: 10px; }
+    .person-head h2 { margin: 0; font-size: 16px; }
+    .events { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+    .event-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; background: #fafcff; }
+    .event-meta { font-size: 12px; color: #475569; margin-bottom: 6px; }
+    .thumbs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .thumb img { width: 70px; border-radius: 4px; border: 1px solid #cbd5f5; transition: transform .12s; }
+    .thumb img:hover { transform: scale(3); z-index: 1000; }
+    #status { margin-top: 10px; font-style: italic; color: #64748b; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ground-Truth Browser</h1>
+    <a href="manifest_editor">Manifest Editor</a>
+    <a href="status_grid">Processing Status</a>
+  </header>
+  <main>
+    <div class="card toolbar">
+      <label>Store: <select id="storeSelect"></select></label>
+      <label>Day: <select id="daySelect"></select></label>
+      <button id="loadBtn">Load</button>
+      <span style="border-left: 1px solid #ccc; margin: 0 10px;"></span>
+      <label>Find Entry: <input type="text" id="findEntryInput" placeholder="entry-id..."></label>
+      <button id="findEntryBtn">Find</button>
+    </div>
+    <div id="status">Select a store and day to browse ground-truth clusters.</div>
+
+    <div id="pagerTop" class="card pager" style="display:none;">
+      <button id="prevPageTop">Prev</button>
+      <span id="pagerInfoTop"></span>
+      <button id="nextPageTop">Next</button>
+      <span id="pagerStatsTop" style="font-size:12px;color:#64748b;margin-left:auto;"></span>
+    </div>
+
+    <div id="people"></div>
+
+    <div id="pagerBottom" class="card pager" style="display:none;">
+      <button id="prevPageBottom">Prev</button>
+      <span id="pagerInfoBottom"></span>
+      <button id="nextPageBottom">Next</button>
+      <span id="pagerStatsBottom" style="font-size:12px;color:#64748b;margin-left:auto;"></span>
+    </div>
+  </main>
+
+  <script>
+    const BASE = (window.BASE_URL || "").replace(/\/+$/,'');
+    const EDITOR_BASE = `${BASE}/manifest-editor`;
+    const getApiUrl = (path) => `${EDITOR_BASE}${path}`;
+
+    const state = { page: 1, total_pages: 1 };
+
+    document.addEventListener("DOMContentLoaded", () => {
+      populateDropdowns();
+      document.getElementById("loadBtn").addEventListener("click", () => {
+        state.page = 1;
+        loadClusters();
+      });
+      document.getElementById("findEntryBtn").addEventListener("click", findEntry);
+      document.getElementById("findEntryBtn").addEventListener("click", findEntry);
+      document.getElementById("prevPageTop").addEventListener("click", () => changePage(state.page - 1));
+      document.getElementById("nextPageTop").addEventListener("click", () => changePage(state.page + 1));
+      document.getElementById("prevPageBottom").addEventListener("click", () => changePage(state.page - 1));
+      document.getElementById("nextPageBottom").addEventListener("click", () => changePage(state.page + 1));
+    });
+
+    async function findEntry() {
+        const entryId = document.getElementById("findEntryInput").value.trim();
+        if (!entryId) return;
+
+        const statusEl = document.getElementById("status");
+        statusEl.textContent = `Searching for ${entryId}...`;
+        try {
+            const url = getApiUrl(`/api/find-entry/${entryId}`);
+            const resp = await fetch(url);
+            if (!resp.ok) {
+                const errorText = await resp.text();
+                try {
+                  const errorJson = JSON.parse(errorText);
+                  throw new Error(errorJson.detail || errorText);
+                } catch(e) {
+                  throw new Error(errorText);
+                }
+            }
+            const data = await resp.json();
+            
+            statusEl.textContent = `Found in ${data.store_id} @ ${data.day_id}. Loading...`;
+            document.getElementById('daySelect').value = data.day_id;
+            document.getElementById('storeSelect').value = data.store_id;
+            
+            state.page = 1; // Reset to page 1 for the new view
+            await loadClusters();
+
+            setTimeout(() => {
+                const allEventCards = document.querySelectorAll('.event-card');
+                for (const card of allEventCards) {
+                    const strongEl = card.querySelector('.event-meta strong');
+                    if (strongEl && strongEl.textContent === entryId) {
+                        card.style.border = '2px solid #2563eb';
+                        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        break;
+                    }
+                }
+            }, 1500); // Delay to allow for render
+
+        } catch (err) {
+            console.error(err);
+            statusEl.textContent = `Search failed: ${err.message}`;
+            alert(`Entry ID "${entryId}" not found.`);
+        }
+    }
+
+    async function findEntry() {
+        const entryId = document.getElementById("findEntryInput").value.trim();
+        if (!entryId) return;
+
+        const statusEl = document.getElementById("status");
+        statusEl.textContent = `Searching for ${entryId}...`;
+        try {
+            const url = getApiUrl(`/api/find-entry/${entryId}`);
+            const resp = await fetch(url);
+            if (!resp.ok) {
+                const errorText = await resp.text();
+                try {
+                  const errorJson = JSON.parse(errorText);
+                  throw new Error(errorJson.detail || errorText);
+                } catch(e) {
+                  throw new Error(errorText);
+                }
+            }
+            const data = await resp.json();
+            
+            statusEl.textContent = `Found in ${data.store_id} @ ${data.day_id}. Loading...`;
+            document.getElementById('daySelect').value = data.day_id;
+            document.getElementById('storeSelect').value = data.store_id;
+            
+            state.page = 1; // Reset to page 1 for the new view
+            await loadClusters(data.store_id, data.day_id);
+
+            setTimeout(() => {
+                const allEventCards = document.querySelectorAll('.event-card');
+                for (const card of allEventCards) {
+                    const strongEl = card.querySelector('.event-meta strong');
+                    if (strongEl && strongEl.textContent === entryId) {
+                        card.style.border = '2px solid #2563eb';
+                        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        break;
+                    }
+                }
+            }, 1500); // Delay to allow for render
+
+        } catch (err) {
+            console.error(err);
+            statusEl.textContent = `Search failed: ${err.message}`;
+            alert(`Entry ID "${entryId}" not found.`);
+        }
+    }
+
+    async function populateDropdowns() {
+      try {
+        const resp = await fetch(getApiUrl('/api/gt/index'));
+        const data = await resp.json();
+        
+        const storeSelect = document.getElementById("storeSelect");
+        data.stores.forEach(store => {
+          const option = document.createElement("option");
+          option.value = store;
+          option.textContent = store;
+          storeSelect.appendChild(option);
+        });
+
+        const daySelect = document.getElementById("daySelect");
+        data.days.forEach(day => {
+          const option = document.createElement("option");
+          option.value = day;
+          option.textContent = day;
+          daySelect.appendChild(option);
+        });
+
+      } catch (err) {
+        document.getElementById("status").textContent = `Failed to load index: ${err.message}`;
+      }
+    }
+
+    function changePage(newPage) {
+      if (newPage < 1 || newPage > state.total_pages) return;
+      state.page = newPage;
+      loadClusters();
+    }
+
+    async function loadClusters(store_id = null, day_id = null) {
+      const store = store_id || document.getElementById("storeSelect").value;
+      const day = day_id || document.getElementById("daySelect").value;
+      const statusEl = document.getElementById("status");
+      const peopleEl = document.getElementById("people");
+      
+      peopleEl.innerHTML = "";
+      if (!store || !day) {
+        statusEl.textContent = "Please select both a store and a day.";
+        return;
+      }
+
+      statusEl.textContent = "Loading...";
+      updatePager(null); // Hide pager while loading
+
+      try {
+        const url = getApiUrl(`/api/ground-truth-clusters?store_id=${store}&day_id=${day}&page=${state.page}`);
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          throw new Error(await resp.text() || resp.statusText);
+        }
+        const data = await resp.json();
+        state.total_pages = data.total_pages;
+        renderClusters(data.people);
+        statusEl.textContent = ``;
+        updatePager(data);
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = `Failed to load clusters: ${err.message}`;
+      }
+    }
+
+    function updatePager(data) {
+      const show = data && data.total_people > 0;
+      document.getElementById("pagerTop").style.display = show ? "flex" : "none";
+      document.getElementById("pagerBottom").style.display = show ? "flex" : "none";
+      if (!show) return;
+
+      ["Top", "Bottom"].forEach(loc => {
+        document.getElementById(`pagerInfo${loc}`).textContent = `Page ${data.page} of ${data.total_pages}`;
+        document.getElementById(`pagerStats${loc}`).textContent = `${data.total_people} total people`;
+        document.getElementById(`prevPage${loc}`).disabled = data.page <= 1;
+        document.getElementById(`nextPage${loc}`).disabled = data.page >= data.total_pages;
+      });
+    }
+
+    function renderClusters(people) {
+      const peopleEl = document.getElementById("people");
+      peopleEl.innerHTML = "";
+
+      if (!people.length) {
+        document.getElementById("status").textContent = "No ground-truth clusters found for this selection.";
+        return;
+      }
+
+      people.forEach(person => {
+        const personEl = document.createElement("div");
+        personEl.className = "person";
+        
+        let eventsHtml = "";
+        person.events.forEach(ev => {
+          eventsHtml += `
+            <div class="event-card">
+              <div class="event-meta"><strong>${ev.entry_id}</strong><br>${ev.timestamp || "—"} · ${ev.direction || "?"} · ${ev.camera || "?"}</div>
+              <div class="thumbs">${renderThumbs(ev.images)}</div>
+            </div>
+          `;
+        });
+
+        personEl.innerHTML = `
+          <div class="person-head">
+            <h2>Person ID: ${person.person_id} (${person.events.length} events)</h2>
+          </div>
+          <div class="events">${eventsHtml}</div>
+        `;
+        peopleEl.appendChild(personEl);
+      });
+    }
+
+    function renderThumbs(images) {
+      if (!images || !images.length) return "<em>No images</em>";
+      return images.map(uri => `<div class="thumb"><img src="${resolveImage(uri)}"></div>`).join("");
+    }
+
+    function resolveImage(uri) {
+      if (!uri) return "";
+      if (uri.startsWith("http") || uri.startsWith("data:")) return uri;
+      return getApiUrl(`/api/image?source=${encodeURIComponent(uri)}`);
+    }
+  </script>
+</body>
+</html>

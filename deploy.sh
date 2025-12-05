@@ -57,7 +57,7 @@ metadata:
 spec:
   repo: https://teknoir.github.io/re-identification-system
   chart: re-identification-system
-  version: 0.0.9
+  version: 0.0.10
   targetNamespace: ${NAMESPACE}
   valuesContent: |-
     basePath: /${NAMESPACE}/re-identification-system

@@ -22,6 +22,7 @@ API_EDITOR_PATH = Path(__file__).with_name("manifest_api_editor.html")
 ENCODER_VIEWER_PATH = Path(__file__).with_name("encoder_dataset_viewer.html")
 GT_EDITOR_PATH = Path(__file__).with_name("gt_editor.html")
 STATUS_GRID_PATH = Path(__file__).with_name("processing_status.html")
+GT_BROWSER_PATH = Path(__file__).with_name("ground_truth_browser.html")
 ENCODER_STATIC_DIR = ROOT / "model" / "encoder" / "runs"
 STATE_PATH = Path(os.getenv("MANIFEST_EDITOR_STATE", "/tmp/gt/manifest_editor_state.json"))
 MANIFEST_API_BASE = os.getenv("MANIFEST_API_BASE", "http://matching-service")
@@ -265,6 +266,15 @@ def status_grid_viewer():
     inject = f"<script>window.BASE_URL = {json.dumps(BASE_URL.rstrip('/'))};</script>"
     return inject + html
 
+
+@app.get("/gt_browser", response_class=HTMLResponse)
+def gt_browser_viewer():
+    if not GT_BROWSER_PATH.exists():
+        raise HTTPException(status_code=500, detail="ground_truth_browser.html not found")
+    html = GT_BROWSER_PATH.read_text(encoding="utf-8")
+    inject = f"<script>window.BASE_URL = {json.dumps(BASE_URL.rstrip('/'))};</script>"
+    return inject + html
+
 # Serve encoder run artifacts (large files) for viewer defaults
 if ENCODER_STATIC_DIR.exists():
     app.mount("/static/encoder", StaticFiles(directory=str(ENCODER_STATIC_DIR)), name="encoder_static")
@@ -282,63 +292,171 @@ def grid_status(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ):
-    # Default date range: last 30 days
+    # 1. Set date range
     if not end_date:
         end_date = date.today().isoformat()
     if not start_date:
         start_date = (date.today() - timedelta(days=30)).isoformat()
 
-    # Min date constraint
-    if start_date < "2025-11-20":
-        start_date = "2025-11-20"
+    date_match = {"day_id": {"$gte": start_date, "$lte": end_date}}
 
-    reid_db = get_reid_db()
-    observations_coll = reid_db[OBSERVATIONS_COLL]
+    # 2. Get DB and collections from gt_tools
+    db = get_manifest_editor_db()
+    clusters_coll = db[CLUSTERS_COLL]
+    entries_coll = db[ENTRIES_COLL]
 
-    # Get observation counts and unique day/stores
-    pipeline = [
-        {"$match": {"day_id": {"$gte": start_date, "$lte": end_date}}},
-        {"$group": {"_id": {"day_id": "$day_id", "store_id": "$store_id"}, "count": {"$sum": 1}}},
-        {"$sort": {"_id.day_id": -1, "_id.store_id": 1}}
+    # 3. Get all relevant clusters
+    clusters = list(clusters_coll.find(date_match, {"day_id": 1, "store_id": 1, "adjudicated": 1}))
+    
+    if not clusters:
+        return {"days": [], "stores": [], "grid_data": []}
+
+    # 4. Get entry counts for the day/store pairs found in clusters
+    day_store_pairs = list(set((c["day_id"], c["store_id"]) for c in clusters))
+    match_query = {"$or": [{"day_id": d, "store_id": s} for d, s in day_store_pairs]}
+
+    entry_count_pipeline = [
+        {"$match": match_query},
+        {"$group": {"_id": {"day_id": "$day_id", "store_id": "$store_id"}, "count": {"$sum": 1}}}
     ]
-    observation_data = list(observations_coll.aggregate(pipeline))
+    entry_counts = {
+        (item['_id']['day_id'], item['_id']['store_id']): item['count']
+        for item in entries_coll.aggregate(entry_count_pipeline)
+    }
 
-    all_days = sorted(list(set(item["_id"]["day_id"] for item in observation_data)), reverse=True)
-    all_stores = sorted(list(set(item["_id"]["store_id"] for item in observation_data)))
-
-    # Get processed and adjudicated statuses
-    gt_db = get_manifest_editor_db()
-    clusters_coll = gt_db[CLUSTERS_COLL]
-    status_map = {}
-    for doc in clusters_coll.find(
-        {"day_id": {"$in": all_days}},
-        {"day_id": 1, "store_id": 1, "adjudicated": 1}
-    ):
-        key = f"{doc['day_id']}-{doc['store_id']}"
-        if doc.get('adjudicated'):
-            status_map[key] = "adjudicated"
-        else:
-            status_map[key] = "processed"
-
-    # Combine data
+    # 5. Build grid data and determine status
     grid_data = []
-    for item in observation_data:
-        day = item["_id"]["day_id"]
-        store = item["_id"]["store_id"]
-        key = f"{day}-{store}"
-        status = status_map.get(key, "none")
+    day_set = set()
+    store_set = set()
+
+    for cluster in clusters:
+        day_id = cluster["day_id"]
+        store_id = cluster["store_id"]
+        key = (day_id, store_id)
+        
+        day_set.add(day_id)
+        store_set.add(store_id)
+        
+        count = entry_counts.get(key, 0)
+        status = "none" # Default to Gray
+
+        if cluster.get("adjudicated"):
+            status = "adjudicated" # Green
+        elif count > 0:
+            status = "processed" # Yellow
+
         grid_data.append({
-            "day_id": day,
-            "store_id": store,
-            "count": item["count"],
+            "day_id": day_id,
+            "store_id": store_id,
+            "count": count,
             "status": status
         })
+
+    all_days = sorted(list(day_set), reverse=True)
+    all_stores = sorted(list(store_set))
 
     return {
         "days": all_days,
         "stores": all_stores,
         "grid_data": grid_data
     }
+
+@app.get("/api/ground-truth-clusters")
+def get_ground_truth_clusters(
+    store_id: str, 
+    day_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100)
+):
+    db = get_manifest_editor_db()
+    gt_coll = db[GT_COLL]
+    entries_coll = db[ENTRIES_COLL]
+
+    # 1. Get the entry -> person map
+    key = f"{store_id}-{day_id}"
+    map_doc = gt_coll.find_one({"_id": key}) or gt_coll.find_one({"store_id": store_id, "day_id": day_id})
+    if not map_doc:
+        raise HTTPException(status_code=404, detail="Ground truth map not found for store/day")
+
+    entry_map = map_doc.get("entry_map", {})
+    if not entry_map:
+        return {"people": [], "total_people": 0, "page": 1, "page_size": page_size, "total_pages": 0}
+
+    # 2. Group entry_ids by person_id
+    person_to_entries = {}
+    for entry_id, mapping_info in entry_map.items():
+        person_id = mapping_info.get("person_id")
+        if person_id:
+            person_to_entries.setdefault(person_id, []).append(entry_id)
+    
+    all_person_ids = sorted(person_to_entries.keys())
+    total_people = len(all_person_ids)
+    total_pages = (total_people + page_size - 1) // page_size
+
+    # 3. Paginate the people
+    start_index = (page - 1) * page_size
+    end_index = start_index + page_size
+    paginated_person_ids = all_person_ids[start_index:end_index]
+
+    # 4. Fetch details only for entries of paginated people
+    paginated_entry_ids = [eid for pid in paginated_person_ids for eid in person_to_entries[pid]]
+    
+    entry_details = {}
+    if paginated_entry_ids:
+        for doc in entries_coll.find({"_id": {"$in": paginated_entry_ids}}):
+            entry_details[doc["_id"]] = doc
+
+    # 5. Structure the final response
+    people_out = []
+    for person_id in paginated_person_ids:
+        events_out = []
+        for entry_id in person_to_entries[person_id]:
+            details = entry_details.get(entry_id)
+            if details:
+                events_out.append({
+                    "entry_id": entry_id,
+                    "timestamp": details.get("timestamp"),
+                    "direction": details.get("direction"),
+                    "camera": details.get("camera"),
+                    "images": details.get("files") or details.get("images") or details.get("image_paths", []),
+                    "attrs": details.get("attrs", {})
+                })
+        
+        people_out.append({
+            "person_id": person_id,
+            "events": events_out
+        })
+
+    return {
+        "people": people_out,
+        "total_people": total_people,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }
+
+@app.get("/api/find-entry/{entry_id}")
+def find_entry_in_gt_map(entry_id: str):
+    db = get_manifest_editor_db()
+    gt_coll = db[GT_COLL] # This is the 'map' collection
+
+    # Find the document where the entry_id exists as a key in entry_map
+    query = {f"entry_map.{entry_id}": {"$exists": True}}
+    
+    doc = gt_coll.find_one(query)
+
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Entry ID '{entry_id}' not found in any ground-truth map.")
+
+    # Extract the person_id from the nested object
+    person_id = doc.get("entry_map", {}).get(entry_id, {}).get("person_id")
+
+    return {
+        "store_id": doc.get("store_id"),
+        "day_id": doc.get("day_id"),
+        "person_id": person_id
+    }
+
 
 @app.get("/api/image")
 def image_proxy(source: str = Query(..., description="gs:// URI or remote path to image")):
@@ -402,7 +520,7 @@ def get_ground_truth(store_id: str, day_id: str):
     doc = gt_coll.find_one({"_id": key}) or gt_coll.find_one({"store_id": store_id, "day_id": day_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Ground truth not found for store/day")
-    entry_map = doc.get("entry_person_map") or {}
+    entry_map = doc.get("entry_map") or {}
     persons_meta = doc.get("persons") or {}
     entry_ids = list(entry_map.keys())
     entries: Dict[str, Any] = {}
