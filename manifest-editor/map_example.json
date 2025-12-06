@@ -1,0 +1,352 @@
+{
+    "_id": "nc0211-2025-11-04",
+    "store_id": "nc0211",
+    "day_id": "2025-11-04",
+    "entry_map": {
+      "nc0211-front-door-1-a78cf471-13438": {
+        "person_id": "person_1050-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13440": {
+        "person_id": "person_1051-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13457": {
+        "person_id": "person_1052-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13495": {
+        "person_id": "person_1054-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13519": {
+        "person_id": "person_1055-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13523": {
+        "person_id": "person_1056-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13530": {
+        "person_id": "person_1057-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13624": {
+        "person_id": "person_1058-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13658": {
+        "person_id": "person_1059-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13679": {
+        "person_id": "person_1060-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13730": {
+        "person_id": "person_1061-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13837": {
+        "person_id": "person_1062-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-13855": {
+        "person_id": "person_1064-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-14024": {
+        "person_id": "person_1065-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-14120": {
+        "person_id": "person_1066-11-04",
+        "include": true
+      },
+      "nc0211-front-door-1-a78cf471-14437": {
+        "person_id": "person_1067-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-8c511b69-681": {
+        "person_id": "person_1181-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-8c511b69-687": {
+        "person_id": "person_1182-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-27471": {
+        "person_id": "person_1247-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31256": {
+        "person_id": "person_1248-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31265": {
+        "person_id": "person_1249-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31266": {
+        "person_id": "person_1250-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31360": {
+        "person_id": "person_1251-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31378": {
+        "person_id": "person_1251-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31411": {
+        "person_id": "person_1253-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31433": {
+        "person_id": "person_1254-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31443": {
+        "person_id": "person_1255-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31506": {
+        "person_id": "person_1256-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31813": {
+        "person_id": "person_1256-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31621": {
+        "person_id": "person_1257-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31622": {
+        "person_id": "person_1258-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31727": {
+        "person_id": "person_1259-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31728": {
+        "person_id": "person_1260-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31751": {
+        "person_id": "person_1261-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31755": {
+        "person_id": "person_1262-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31892": {
+        "person_id": "person_1264-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31954": {
+        "person_id": "person_1265-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31958": {
+        "person_id": "person_1266-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-31987": {
+        "person_id": "person_1267-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-32482": {
+        "person_id": "person_1268-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-32597": {
+        "person_id": "person_1269-11-04",
+        "include": false
+      },
+      "nc0211-front-door-2-d6c925ad-32677": {
+        "person_id": "person_1269-11-04",
+        "include": false
+      },
+      "nc0211-front-door-2-d6c925ad-32780": {
+        "person_id": "person_1271-11-04",
+        "include": true
+      },
+      "nc0211-front-door-2-d6c925ad-32782": {
+        "person_id": "person_1272-11-04",
+        "include": true
+      }
+    },
+    "persons": {
+      "person_1050-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1051-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1052-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1054-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1055-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1056-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1057-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1058-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1059-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1060-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1061-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1062-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1064-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1065-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1066-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1067-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1181-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1182-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1247-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1248-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1249-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1250-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1251-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1253-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1254-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1255-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1256-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1257-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1258-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1259-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1260-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1261-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1262-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1264-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1265-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1266-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1267-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1268-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1269-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1271-11-04": {
+        "alias": "",
+        "first_seen": ""
+      },
+      "person_1272-11-04": {
+        "alias": "",
+        "first_seen": ""
+      }
+    },
+    "meta": {
+      "exported_at": "2025-12-06T00:08:27.522770+00:00"
+    }
+  }

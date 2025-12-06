@@ -382,9 +382,12 @@ def get_ground_truth_clusters(
     if not entry_map:
         return {"people": [], "total_people": 0, "page": 1, "page_size": page_size, "total_pages": 0}
 
-    # 2. Group entry_ids by person_id
+    # 2. Group entry_ids by person_id, respecting the 'include' flag
     person_to_entries = {}
     for entry_id, mapping_info in entry_map.items():
+        # Only include entries that are not explicitly excluded
+        if not mapping_info.get("include", True):
+            continue
         person_id = mapping_info.get("person_id")
         if person_id:
             person_to_entries.setdefault(person_id, []).append(entry_id)

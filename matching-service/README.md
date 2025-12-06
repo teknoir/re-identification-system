@@ -3,7 +3,17 @@
 Monitor the matching-service logs:
 ```bash
 kubectl -n victra-poc logs -f deployment/matching-service
+watch kubectl -n victra-poc top pods
 ```
+Monitor pod deploys:
+```bash
+watch kubectl -n victra-poc get pods
+```
+Describe last crash
+```bash
+kubectl -n victra-poc describe pod manifest-editor
+```
+
 
 Send api calls to the prod `matching-service` 
 ```bash
@@ -324,6 +334,11 @@ streamlit run entry_pipeline/view_manifest.py -- manifest.json -- --host 0.0.0.0
 Use the sidebar `Entry ID` filter to focus on a specific person.
 
 ### Manifest cluster editor (dynamic)
+
+1. Post entries via `python post_matches_from_mongo.py --store nc0211 --day 2025-12-03`
+2. Open that day/store combo in the manifest editor, that will create the gt_tools/entries and gt_tools/clusters records after a 'save'. This runs that combo through /manifest which is then loaded in the editor. The save function persists the data
+
+
 Run the FastAPI helper so you can load any manifest (local path or `gs://…`) and curate clusters with the original burst-friendly UI:
 ```bash
 uvicorn reference.manifest_editor_server:app --host 0.0.0.0 --port 9000 --reload
