@@ -96,7 +96,7 @@ spec:
             tag: feature-line-crossing-cloud-stream-8975d56
           serviceAccountName: default-editor
           reId:
-            matchingServiceURL: http://matching-service
+            matchingServiceURL: http://matching-service/match
             visualAttrPromptName: reid-visual-attributes
             visualAttrResponseModel: reid_visual_attribute_classifier
             visualAttrModelName: projects/815276040543/locations/us-central1/endpoints/1385445124137287680
