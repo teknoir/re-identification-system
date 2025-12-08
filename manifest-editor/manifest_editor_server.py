@@ -17,7 +17,8 @@ from pymongo import MongoClient
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-from .gcs import download_blob_bytes 
+from .config import get_settings
+from .gcs import download_blob_bytes, parse_gcs_uri
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML_PATH = Path(__file__).with_name("manifest_editor.html")
@@ -378,6 +379,8 @@ def get_ground_truth_clusters(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100)
 ):
+    settings = get_settings()
+    media_base_url = settings.media_service_base_url
     db = get_manifest_editor_db()
     gt_coll = db[GT_COLL]
     entries_coll = db[ENTRIES_COLL]
@@ -426,12 +429,36 @@ def get_ground_truth_clusters(
         for entry_id in person_to_entries[person_id]:
             details = entry_details.get(entry_id)
             if details:
+                image_uris = details.get("files") or details.get("images") or details.get("image_paths", [])
+                
+                resolved_images = []
+                if media_base_url:
+                    for uri in image_uris:
+                        logging.info(f"IMAGE_URI_DEBUG: Processing URI in get_ground_truth_clusters: {uri} (type: {type(uri)})")
+                        if not isinstance(uri, str):
+                            logging.warning(f"IMAGE_URI_DEBUG: Skipping non-string URI: {uri}")
+                            continue
+                        
+                        if uri.startswith("gs://"):
+                            try:
+                                _, key = parse_gcs_uri(uri)
+                                resolved_images.append(f"{media_base_url.rstrip('/')}/jpeg/{key}")
+                            except ValueError:
+                                resolved_images.append(uri) # Append as is if parsing fails
+                        elif not uri.startswith("http"):
+                             # It's a relative path, not a full gs:// or http URL
+                             resolved_images.append(f"{media_base_url.rstrip('/')}/jpeg/{uri.lstrip('/')}")
+                        else:
+                            resolved_images.append(uri) # It might be already a URL
+                else:
+                    resolved_images = image_uris
+
                 events_out.append({
                     "entry_id": entry_id,
                     "timestamp": details.get("timestamp"),
                     "direction": details.get("direction"),
                     "camera": details.get("camera"),
-                    "images": details.get("files") or details.get("images") or details.get("image_paths", []),
+                    "images": resolved_images,
                     "attrs": details.get("attrs", {})
                 })
         
@@ -503,8 +530,34 @@ def manifest_proxy(
     if not bypass_mongo:
         try:
             mongo_data = read_manifest_from_mongo(store_id, day_id)
+            # Transform image URLs to use the media service
+            settings = get_settings()
+            media_base_url = settings.media_service_base_url
+            if media_base_url and mongo_data.get("people"):
+                for person in mongo_data["people"]:
+                    for event in person.get("events", []):
+                        image_uris = event.get("images", [])
+                        resolved_images = []
+                        for uri in image_uris:
+                            logging.info(f"IMAGE_URI_DEBUG: Processing URI in manifest_proxy: {uri} (type: {type(uri)})")
+                            if not isinstance(uri, str):
+                                logging.warning(f"IMAGE_URI_DEBUG: Skipping non-string URI: {uri}")
+                                continue
+
+                            if uri.startswith("gs://"):
+                                try:
+                                    _, key = parse_gcs_uri(uri)
+                                    resolved_images.append(f"{media_base_url.rstrip('/')}/jpeg/{key}")
+                                except ValueError:
+                                    resolved_images.append(uri)
+                            elif not uri.startswith("http"):
+                                resolved_images.append(f"{media_base_url.rstrip('/')}/jpeg/{uri.lstrip('/')}")
+                            else:
+                                resolved_images.append(uri)
+                        event["images"] = resolved_images
             return mongo_data
-        except Exception:
+        except Exception as e:
+            logging.warning(f"Failed to read from mongo, falling back to API. Error: {e}")
             pass
 
     base = MANIFEST_API_BASE
@@ -682,7 +735,9 @@ def save_editor_state(payload: Dict[str, Any] = Body(...)):
     if all_entries:
         seen_ids = upsert_entries(all_entries)
         # remove stale entries for this store/day
-        get_manifest_editor_db()[ENTRIES_COLL].delete_many({"store_id": store_id, "day_id": day_id, "_id": {"$nin": seen_ids}})
+        logging.info(f"Attempting to remove stale entries for store_id={store_id}, day_id={day_id} from MongoDB collection {ENTRIES_COLL}")
+        delete_result = get_manifest_editor_db()[ENTRIES_COLL].delete_many({"store_id": store_id, "day_id": day_id, "_id": {"$nin": seen_ids}})
+        logging.info(f"Removed {delete_result.deleted_count} stale entries for store_id={store_id}, day_id={day_id}.")
     if persons_map:
         upsert_cluster(store_id, day_id, persons_map, adjudicated=adjudicated)
 
