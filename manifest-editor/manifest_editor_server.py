@@ -12,7 +12,10 @@ from fastapi import Body, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+import logging
 from pymongo import MongoClient
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 from .gcs import download_blob_bytes 
 
@@ -94,6 +97,7 @@ def normalize_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def upsert_entries(entries: List[Dict[str, Any]]) -> List[str]:
+    logging.info(f"Attempting to upsert {len(entries)} entries into MongoDB collection {ENTRIES_COLL}")
     db = get_manifest_editor_db()
     coll = db[ENTRIES_COLL]
     now = datetime.utcnow()
@@ -124,10 +128,13 @@ def upsert_entries(entries: List[Dict[str, Any]]) -> List[str]:
             "meta": {"saved_at": now},
         }
         coll.replace_one({"_id": entry_id}, doc, upsert=True)
+        logging.debug(f"Upserted entry: {entry_id}")
+    logging.info(f"Finished upserting {len(entries)} entries. {len(seen)} unique entries processed.")
     return seen
 
 
 def upsert_cluster(store_id: str, day_id: str, persons_map: Dict[str, Any], adjudicated: bool = False):
+    logging.info(f"Attempting to upsert cluster for store_id={store_id}, day_id={day_id} into MongoDB collection {CLUSTERS_COLL}")
     db = get_manifest_editor_db()
     coll = db[CLUSTERS_COLL]
     key = f"{store_id}-{day_id}"
@@ -139,7 +146,8 @@ def upsert_cluster(store_id: str, day_id: str, persons_map: Dict[str, Any], adju
         "meta": {"saved_at": datetime.utcnow()},
         "adjudicated": bool(adjudicated),
     }
-    coll.replace_one({"_id": key}, doc, upsert=True)
+    result = coll.replace_one({"_id": key}, doc, upsert=True)
+    logging.info(f"Upserted cluster {key}. Matched: {result.matched_count}, Modified: {result.modified_count}, Upserted ID: {result.upserted_id}")
 
 
 def normalize_flag_value(value: Any) -> bool:
@@ -218,8 +226,10 @@ def read_editor_state() -> Dict[str, Any] | None:
 
 
 def write_editor_state(payload: Dict[str, Any]) -> None:
+    logging.info(f"Attempting to write editor state to {STATE_PATH}")
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATE_PATH.write_text(json.dumps(payload, indent=2))
+    logging.info(f"Successfully wrote editor state to {STATE_PATH}")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -587,17 +597,22 @@ def update_gt_flags(payload: Dict[str, Any] = Body(...)):
     key = f"{store_id}-{day_id}"
     doc = gt_coll.find_one({"_id": key})
     if not doc:
+        logging.warning(f"Ground truth document not found for {key} during flag update.")
         raise HTTPException(status_code=404, detail="Ground truth document not found")
     entry_map = doc.get("entry_map") or {}
     set_map = {}
     for entry_id, flag in flags.items():
         if entry_id not in entry_map:
+            logging.debug(f"Entry {entry_id} not found in map for {key} during flag update. Skipping.")
             continue
         set_map[f"entry_map.{entry_id}.include"] = not bool(flag)
     if not set_map:
+        logging.info(f"No flags to update for {key}.")
         return {"ok": True, "updated": 0, "removed": 0}
+    logging.info(f"Attempting to update {len(set_map)} flags for {key} in MongoDB collection {GT_COLL}")
     result = gt_coll.update_one({"_id": key}, {"$set": set_map})
     removed = sum(1 for v in flags.values() if v)
+    logging.info(f"Updated {result.modified_count} flags for {key}. Removed {removed} entries conceptually.")
     return {"ok": True, "updated": int(result.modified_count), "removed": removed}
 
 
