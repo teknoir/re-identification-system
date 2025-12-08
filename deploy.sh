@@ -57,7 +57,7 @@ metadata:
 spec:
   repo: https://teknoir.github.io/re-identification-system
   chart: re-identification-system
-  version: 0.0.10
+  version: 0.0.11
   targetNamespace: ${NAMESPACE}
   valuesContent: |-
     basePath: /${NAMESPACE}/re-identification-system
@@ -75,9 +75,16 @@ spec:
         tag: ${BRANCH_NAME}-${SHORT_SHA}
 
     triton:
+      resources:
+        limits:
+          cpu: 2000m
+          memory: 6Gi
       models:
         - name: swin-reid
+          # Vanilla model from Nvidia:
           image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-local-20251112-104202
+          # Felixes new retrained model:
+          #image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-patched-20251208-142235
 
     event-processing-pipeline:
       streams:
@@ -86,7 +93,7 @@ spec:
           domain: ${DOMAIN}
           image:
             repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
-            tag: feature-line-crossing-cloud-stream-25aebe2
+            tag: feature-line-crossing-cloud-stream-8975d56
           serviceAccountName: default-editor
           reId:
             matchingServiceURL: http://matching-service
