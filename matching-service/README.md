@@ -71,15 +71,6 @@ Rebuild from mongo:
     --data '{"day_id":"2025-11-06"}'
 ```
 
-On startup, the service loads the encoder weights into CPU memory and establishes the Mongo connection (if configured). After the process begins, you should rebuild the FAISS caches before serving traffic (at least for the current day):
-```bash
-curl -X POST http://0.0.0.0:8080/rebuild \
-  -H "Content-Type: application/json" \
-  --data '{"day_id":"2025-11-06"}'
-```
-
-Repeat for each day/store combination you care about. Once rebuilt, the server is ready to accept `/match` requests.
-
 ## Training the Metric Encoder
 
 Train the metric model (entry encoder)
