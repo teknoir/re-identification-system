@@ -82,9 +82,9 @@ spec:
       models:
         - name: swin-reid
           # Vanilla model from Nvidia:
-          image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-local-20251112-104202
+          #image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-local-20251112-104202
           # Felixes new retrained model:
-          #image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-patched-20251208-142235
+          image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-retrained-20251209-074308
 
     event-processing-pipeline:
       streams:
@@ -93,7 +93,7 @@ spec:
           domain: ${DOMAIN}
           image:
             repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
-            tag: feature-line-crossing-cloud-stream-8975d56
+            tag: feature-line-crossing-cloud-stream-ce9fff3
           serviceAccountName: default-editor
           reId:
             matchingServiceURL: http://matching-service/match
