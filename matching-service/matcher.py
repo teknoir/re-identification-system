@@ -176,6 +176,7 @@ class ReEntryMatcher:
         day_id: str,
         entry_id: str,
         store_id: Optional[str] = None,
+        employee_id: Optional[str] = None,
         alert_id: Optional[str] = None,
         timestamp: Optional[str] = None,
         direction: Optional[str] = None,
@@ -230,6 +231,8 @@ class ReEntryMatcher:
                 "vis": {"per_image_dim": len(embeddings[0]) if embeddings else 0, "embeddings": embeddings},
                 "attrs": attrs or {},
             }
+            if employee_id:
+                doc["employee_id"] = employee_id
             self.db[self.entries_collection].replace_one({"_id": entry_id}, doc, upsert=True)
 
         return decision
@@ -330,6 +333,7 @@ class ReEntryMatcher:
                     "embeddings": embs,
                     "attrs": doc.get("attrs") or {},
                     "alert_id": doc.get("alert_id"),
+                    "employee_id": doc.get("employee_id"),
                     "images": images,
                     "timestamp": timestamp,
                     "direction": direction,
@@ -370,6 +374,7 @@ class ReEntryMatcher:
                     "direction": rec["direction"],
                     "camera": rec["camera"],
                     "alert_id": rec["alert_id"],
+                    "employee_id": rec.get("employee_id"),
                     "images": rec["images"],
                     "score": nn1,
                     "score2": nn2,
@@ -399,6 +404,42 @@ class ReEntryMatcher:
             "event_count": len(records),
             "people": people,
         }
+
+    def build_employee_manifest(self, day_id: str, store_id: str, emp_id: str) -> Dict[str, Any]:
+        full_manifest = self.build_manifest(day_id, store_id)
+
+        employee_person_ids = set()
+        for person in full_manifest.get("people", []):
+            for event in person.get("events", []):
+                if event.get("employee_id") == emp_id:
+                    employee_person_ids.add(person["person_id"])
+                    break  # Found a match in this cluster, no need to check other events
+
+        employee_clusters = [p for p in full_manifest.get("people", []) if p["person_id"] in employee_person_ids]
+
+        # Define external doors and modify the event payload
+        external_doors = {
+            'nc0009-back-door',
+            'nc0009-salefloor-270',
+            'nc0211-front-door-1',
+            'nc0211-front-door-2',
+            'nc0211-safe-back-door-270'
+        }
+        for person in employee_clusters:
+            for event in person.get("events", []):
+                event.pop("attrs", None)
+                event.pop("embeddings", None)
+                event["external_door"] = event.get("camera") in external_doors
+
+        return {
+            "day_id": day_id,
+            "store_id": store_id,
+            "employee_id": emp_id,
+            "person_count": len(employee_clusters),
+            "event_count": sum(len(p.get("events", [])) for p in employee_clusters),
+            "people": employee_clusters,
+        }
+
     def fetch_entry(self, entry_id: str) -> Optional[Dict[str, Any]]:
         if self.db is None:
             return None

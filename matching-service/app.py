@@ -49,6 +49,7 @@ class MatchRequest(BaseModel):
     day_id: str = Field(..., description="e.g., 2025-11-06")
     store_id: str = Field(..., description="store identifier (e.g., nc0009)")
     entry_id: str = Field(..., description="unique id for this line crossing")
+    employee_id: Optional[str] = Field(default=None, description="employee match id, if any")
     alert_id: Optional[str] = Field(default=None, description="alert document id")
     timestamp: Optional[str] = Field(default=None, description="event timestamp")
     direction: Optional[str] = Field(default=None, description="entry/exit direction")
@@ -73,6 +74,7 @@ def match(req: MatchRequest):
         day_id=req.day_id,
         entry_id=req.entry_id,
         store_id=req.store_id,
+        employee_id=req.employee_id,
         alert_id=req.alert_id,
         timestamp=req.timestamp,
         direction=req.direction,
@@ -102,9 +104,12 @@ def rebuild(req: RebuildRequest):
 
 
 @app.get("/manifest")
-def manifest(day_id: str, store_id: str, entry_id: Optional[str] = None, camera: Optional[List[str]] = None):
+def manifest(day_id: str, store_id: str, entry_id: Optional[str] = None, camera: Optional[List[str]] = None, emp_id: Optional[str] = None):
     try:
-        data = matcher.build_manifest(day_id, store_id, entry_id, camera)
+        if emp_id:
+            data = matcher.build_employee_manifest(day_id, store_id, emp_id)
+        else:
+            data = matcher.build_manifest(day_id, store_id, entry_id, camera)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if BUCKET_PREFIX:
