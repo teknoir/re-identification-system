@@ -195,6 +195,7 @@ def read_manifest_from_mongo(store_id: str, day_id: str) -> Dict[str, Any]:
                     "direction": ev.get("direction") or ref.get("direction"),
                     "images": images,
                     "attrs": ev.get("attrs") or ref.get("attrs") or {},
+                    "embeddings": ref.get("embeddings"),
                     "embeddings_ref": ev.get("embeddings_ref") or ref.get("embeddings_ref"),
                 }
             )
@@ -733,6 +734,10 @@ def save_editor_state(payload: Dict[str, Any] = Body(...)):
         }
 
     if all_entries:
+        if all_entries[0].get("embeddings"):
+            logging.info(f"First entry contains {len(all_entries[0]['embeddings'])} embeddings.")
+        else:
+            logging.info("First entry does NOT contain embeddings.")
         seen_ids = upsert_entries(all_entries)
         # remove stale entries for this store/day
         logging.info(f"Attempting to remove stale entries for store_id={store_id}, day_id={day_id} from MongoDB collection {ENTRIES_COLL}")
