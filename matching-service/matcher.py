@@ -20,6 +20,20 @@ from data_utils import load_attr_schema, vec_from_schema, l2norm_np
 import json
 from pathlib import Path
 import logging
+import pytz
+
+def _get_day_id_for_utc_timestamp(timestamp: str, timezone_str: str = "America/New_York") -> str:
+    """Converts a UTC timestamp string to a local date string (YYYY-MM-DD)."""
+    try:
+        utc_dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        # Fallback for non-iso timestamps or other errors
+        return datetime.utcnow().strftime("%Y-%m-%d")
+    
+    local_tz = pytz.timezone(timezone_str)
+    local_dt = utc_dt.astimezone(local_tz)
+    return local_dt.strftime("%Y-%m-%d")
+
 
 class DayIndex:
     def __init__(self, dim: int):
@@ -186,16 +200,20 @@ class ReEntryMatcher:
         attrs: Optional[Dict[str, Any]] = None,
         topk: Optional[int] = None,
         persist: bool = True,
+        timezone: str = "America/New_York",
     ) -> Dict[str, Any]:
+        # Ensure day_id is calculated from timestamp, ignoring any provided day_id
+        calculated_day_id = _get_day_id_for_utc_timestamp(timestamp, timezone)
+
         resolved_store = store_id or self._store_from_entry(entry_id)
 
         # Check if index is in memory, if not, try to load from cache or rebuild
-        if self.by_day_store.get(day_id, {}).get(resolved_store):
-            logging.info(f"Using in-memory index for day {day_id}, store {resolved_store}.")
-        elif not self.load_from_cache(day_id, resolved_store):
-            self.rebuild_from_mongo(day_id)
+        if self.by_day_store.get(calculated_day_id, {}).get(resolved_store):
+            logging.info(f"Using in-memory index for day {calculated_day_id}, store {resolved_store}.")
+        elif not self.load_from_cache(calculated_day_id, resolved_store):
+            self.rebuild_from_mongo(calculated_day_id)
 
-        idx = self.ensure_day_store(day_id, resolved_store)
+        idx = self.ensure_day_store(calculated_day_id, resolved_store)
 
         z = self.encode_entry(embeddings, attrs)
 
@@ -215,13 +233,13 @@ class ReEntryMatcher:
         idx.add(z, entry_id)
 
         # save to cache after adding
-        self.save_to_cache(day_id, resolved_store)
+        self.save_to_cache(calculated_day_id, resolved_store)
 
         # optional persistence (raw inputs)
         if persist and self.db is not None:
             doc = {
                 "_id": entry_id,
-                "day_id": day_id,
+                "day_id": calculated_day_id,  # Use the calculated day_id
                 "store_id": resolved_store,
                 "alert_id": alert_id,
                 "timestamp": timestamp,
