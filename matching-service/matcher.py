@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import Dict, Any, Tuple, Optional, List
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 os.environ.setdefault("NUMPY_SKIP_MAC_OS_CHECK", "1")
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
@@ -203,17 +203,17 @@ class ReEntryMatcher:
         timezone: str = "America/New_York",
     ) -> Dict[str, Any]:
         # Ensure day_id is calculated from timestamp, ignoring any provided day_id
-        calculated_day_id = _get_day_id_for_utc_timestamp(timestamp, timezone)
+        day_id = _get_day_id_for_utc_timestamp(timestamp, timezone)
 
         resolved_store = store_id or self._store_from_entry(entry_id)
 
         # Check if index is in memory, if not, try to load from cache or rebuild
-        if self.by_day_store.get(calculated_day_id, {}).get(resolved_store):
-            logging.info(f"Using in-memory index for day {calculated_day_id}, store {resolved_store}.")
-        elif not self.load_from_cache(calculated_day_id, resolved_store):
-            self.rebuild_from_mongo(calculated_day_id)
+        if self.by_day_store.get(day_id, {}).get(resolved_store):
+            logging.info(f"Using in-memory index for day {day_id}, store {resolved_store}.")
+        elif not self.load_from_cache(day_id, resolved_store):
+            self.rebuild_from_mongo(day_id)
 
-        idx = self.ensure_day_store(calculated_day_id, resolved_store)
+        idx = self.ensure_day_store(day_id, resolved_store)
 
         z = self.encode_entry(embeddings, attrs)
 
@@ -233,13 +233,13 @@ class ReEntryMatcher:
         idx.add(z, entry_id)
 
         # save to cache after adding
-        self.save_to_cache(calculated_day_id, resolved_store)
+        self.save_to_cache(day_id, resolved_store)
 
         # optional persistence (raw inputs)
         if persist and self.db is not None:
             doc = {
                 "_id": entry_id,
-                "day_id": calculated_day_id,  # Use the calculated day_id
+                "day_id": day_id,  # Use the calculated day_id
                 "store_id": resolved_store,
                 "alert_id": alert_id,
                 "timestamp": timestamp,
@@ -316,9 +316,19 @@ class ReEntryMatcher:
             }
         return out
 
-    def build_manifest(self, day_id: str, store_id: str, entry_id: Optional[str] = None, cameras: Optional[List[str]] = None) -> Dict[str, Any]:
+    def build_manifest(self, day_id: str, store_id: str, entry_id: Optional[str] = None, cameras: Optional[List[str]] = None, timezone: str = "America/New_York") -> Dict[str, Any]:
         if self.db is None:
             raise ValueError("Mongo not configured")
+
+        # Convert day_id to a local timezone-aware date range, then to UTC for querying
+        try:
+            local_tz = pytz.timezone(timezone)
+            start_of_day_local = local_tz.localize(datetime.strptime(day_id, "%Y-%m-%d"))
+            end_of_day_local = start_of_day_local + timedelta(days=1)
+            start_of_day_utc = start_of_day_local.astimezone(pytz.utc)
+            end_of_day_utc = end_of_day_local.astimezone(pytz.utc)
+        except Exception as e:
+            raise ValueError(f"Invalid day_id or timezone: {e}")
 
         # Check if index is in memory, if not, try to load from cache or rebuild
         if self.by_day_store.get(day_id, {}).get(store_id):
@@ -326,7 +336,13 @@ class ReEntryMatcher:
         elif not self.load_from_cache(day_id, store_id):
             self.rebuild_from_mongo(day_id)
 
-        query = {"day_id": day_id, "store_id": store_id}
+        query = {
+            "timestamp": {
+                "$gte": start_of_day_utc.isoformat(),
+                "$lt": end_of_day_utc.isoformat(),
+            },
+            "store_id": store_id,
+        }
         if cameras:
             query["camera"] = {"$in": cameras}
         docs = list(self.db[self.entries_collection].find(query))
