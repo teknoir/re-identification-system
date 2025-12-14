@@ -126,6 +126,7 @@ def upsert_entries(entries: List[Dict[str, Any]]) -> List[str]:
             "files": files,
             "attrs": ev.get("attrs") or ev.get("attr") or {},
             "embeddings": ev.get("embeddings"),
+            "employee_id": ev.get("employee_id"),
             "meta": {"saved_at": now},
         }
         coll.replace_one({"_id": entry_id}, doc, upsert=True)
@@ -157,7 +158,7 @@ def normalize_flag_value(value: Any) -> bool:
     return bool(value)
 
 
-def read_manifest_from_mongo(store_id: str, day_id: str) -> Dict[str, Any]:
+def read_manifest_from_mongo(store_id: str, day_id: str, settings: Settings) -> Dict[str, Any]:
     db = get_manifest_editor_db()
     clusters = db[CLUSTERS_COLL]
     entries_coll = db[ENTRIES_COLL]
@@ -182,8 +183,35 @@ def read_manifest_from_mongo(store_id: str, day_id: str) -> Dict[str, Any]:
         events_out = []
         for ev in person.get("entries", []):
             eid = ev.get("entry_id")
-            ref = entries.get(eid, {})
+            if eid == "nc0009-salefloor-270-556b749d-44":
+                logging.info(f"DEBUG: Processing entry {eid}")
+                logging.info(f"DEBUG: ev from clusters: {ev}")
+                ref = entries.get(eid, {})
+                logging.info(f"DEBUG: ref from entries: {ref}")
+            else:
+                ref = entries.get(eid, {})
             images = ev.get("images") or ref.get("files") or ev.get("image_paths") or []
+
+            # Resolve images for display in the frontend
+            display_images = []
+            if settings.media_service_base_url:
+                for uri in images:
+                    if not isinstance(uri, str):
+                        display_images.append(uri)
+                        continue
+                    if uri.startswith("gs://"):
+                        try:
+                            _, key = parse_gcs_uri(uri)
+                            display_images.append(f"{settings.media_service_base_url.rstrip('/')}/jpeg/{key}")
+                        except ValueError:
+                            display_images.append(uri)
+                    elif not uri.startswith("http"):
+                        display_images.append(f"{settings.media_service_base_url.rstrip('/')}/jpeg/{uri.lstrip('/')}")
+                    else:
+                        display_images.append(uri)
+            else:
+                display_images = images
+
             events_out.append(
                 {
                     "entry_id": eid,
@@ -193,9 +221,11 @@ def read_manifest_from_mongo(store_id: str, day_id: str) -> Dict[str, Any]:
                     "camera": ev.get("camera") or ref.get("camera"),
                     "timestamp": ev.get("timestamp") or ref.get("timestamp"),
                     "direction": ev.get("direction") or ref.get("direction"),
-                    "images": images,
+                    "images": images, # Original GCS paths for persistence
+                    "display_images": display_images, # Resolved HTTP URLs for frontend display
                     "attrs": ev.get("attrs") or ref.get("attrs") or {},
                     "embeddings": ref.get("embeddings"),
+                    "employee_id": ref.get("employee_id"),
                     "embeddings_ref": ev.get("embeddings_ref") or ref.get("embeddings_ref"),
                 }
             )
@@ -524,47 +554,80 @@ def manifest_proxy(
     day_id: str,
     store_id: str,
     entry_id: Optional[str] = None,
+    emp_id: Optional[str] = None,
     camera: Optional[List[str]] = Query(None),
     bypass_mongo: bool = Query(False, description="Bypass mongo check and go straight to the API"),
 ):
     # First try Mongo; fall back to API if not found
     if not bypass_mongo:
         try:
-            mongo_data = read_manifest_from_mongo(store_id, day_id)
-            # Transform image URLs to use the media service
             settings = get_settings()
-            media_base_url = settings.media_service_base_url
-            if media_base_url and mongo_data.get("people"):
+            mongo_data = read_manifest_from_mongo(store_id, day_id, settings)
+
+            # If emp_id is provided, filter the results
+            if emp_id and mongo_data.get("people"):
+                employee_person_ids = set()
+                for person in mongo_data.get("people", []):
+                    for event in person.get("events", []):
+                        if event.get("employee_id") == emp_id:
+                            employee_person_ids.add(person["person_id"])
+                            break
+                
+                mongo_data["people"] = [p for p in mongo_data["people"] if p["person_id"] in employee_person_ids]
+
+            # Add external_door field for data sourced from mongo
+            if mongo_data.get("people"):
+                external_doors = {
+                    'nc0009-back-door',
+                    'nc0009-salefloor-270',
+                    'nc0211-front-door-1',
+                    'nc0211-front-door-2',
+                    'nc0211-safe-back-door-270'
+                }
                 for person in mongo_data["people"]:
                     for event in person.get("events", []):
-                        image_uris = event.get("images", [])
-                        resolved_images = []
-                        for uri in image_uris:
-                            logging.info(f"IMAGE_URI_DEBUG: Processing URI in manifest_proxy: {uri} (type: {type(uri)})")
-                            if not isinstance(uri, str):
-                                logging.warning(f"IMAGE_URI_DEBUG: Skipping non-string URI: {uri}")
-                                continue
+                        event["external_door"] = event.get("camera") in external_doors
 
-                            if uri.startswith("gs://"):
-                                try:
-                                    _, key = parse_gcs_uri(uri)
-                                    resolved_images.append(f"{media_base_url.rstrip('/')}/jpeg/{key}")
-                                except ValueError:
-                                    resolved_images.append(uri)
-                            elif not uri.startswith("http"):
-                                resolved_images.append(f"{media_base_url.rstrip('/')}/jpeg/{uri.lstrip('/')}")
-                            else:
-                                resolved_images.append(uri)
-                        event["images"] = resolved_images
-            return mongo_data
+            # If we were filtering by emp_id and found results, or if we weren't filtering at all, return the data
+            if (emp_id and mongo_data.get("people")) or not emp_id:
+                # Transform image URLs to use the media service
+                settings = get_settings()
+                media_base_url = settings.media_service_base_url
+
+                if media_base_url and mongo_data.get("people"):
+                    for person in mongo_data["people"]:
+                        for event in person.get("events", []):
+                            original_image_uris = event.get("images", [])
+                            display_images = []
+                            for uri in original_image_uris:
+                                if not isinstance(uri, str):
+                                    display_images.append(uri) # Append as is if not a string
+                                    continue
+
+                                if uri.startswith("gs://"):
+                                    try:
+                                        _, key = parse_gcs_uri(uri)
+                                        display_images.append(f"{media_base_url.rstrip('/')}/jpeg/{key}")
+                                    except ValueError:
+                                        display_images.append(uri) # Append as is if parsing fails
+                                elif not uri.startswith("http"):
+                                    display_images.append(f"{media_base_url.rstrip('/')}/jpeg/{uri.lstrip('/')}")
+                                else:
+                                    display_images.append(uri) # It might be already an HTTP URL
+                            event["display_images"] = display_images # Store transformed URLs in a new field
+
+                return mongo_data
         except Exception as e:
             logging.warning(f"Failed to read from mongo, falling back to API. Error: {e}")
             pass
 
+    # Fallback to API call if bypass_mongo is true or mongo read failed
     base = MANIFEST_API_BASE
     params = [("day_id", day_id), ("store_id", store_id)]
     if entry_id:
         params.append(("entry_id", entry_id))
+    if emp_id:
+        params.append(("emp_id", emp_id))
     if camera:
         for cam in camera:
             params.append(("camera", cam))
@@ -575,6 +638,32 @@ def manifest_proxy(
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
     data = resp.json()
     data["source"] = "api"
+
+    # Process data from matching-service for display purposes
+    settings = get_settings()
+    media_base_url = settings.media_service_base_url
+
+    if media_base_url and data.get("people"):
+        for person in data["people"]:
+            for event in person.get("events", []):
+                original_image_uris = event.get("images", [])
+                display_images = []
+                for uri in original_image_uris:
+                    if not isinstance(uri, str):
+                        display_images.append(uri)
+                        continue
+                    if uri.startswith("gs://"):
+                        try:
+                            _, key = parse_gcs_uri(uri)
+                            display_images.append(f"{media_base_url.rstrip('/')}/jpeg/{key}")
+                        except ValueError:
+                            display_images.append(uri)
+                    elif not uri.startswith("http"):
+                        display_images.append(f"{media_base_url.rstrip('/')}/jpeg/{uri.lstrip('/')}")
+                    else:
+                        display_images.append(uri)
+                event["display_images"] = display_images
+
     return data
 
 

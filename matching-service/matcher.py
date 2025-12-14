@@ -352,6 +352,13 @@ class ReEntryMatcher:
         meta_map = self._load_event_metadata(entry_ids)
         records = []
         for doc in docs:
+            eid = doc["_id"]
+            if eid == "nc0009-salefloor-270-556b749d-44":
+                logging.info(f"DEBUG: Processing entry {eid}")
+                logging.info(f"DEBUG: doc from observations: {doc}")
+                meta = meta_map.get(eid, {})
+                logging.info(f"DEBUG: meta from historian: {meta}")
+
             embs = (doc.get("vis") or {}).get("embeddings") or []
             if not embs:
                 continue

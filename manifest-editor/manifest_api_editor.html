@@ -208,7 +208,8 @@
           images: ev.images || [],
           image_paths: ev._image_paths || ev.images || [],
           embeddings: ev.embeddings || [],
-          attrs: ev.attrs || {}
+          attrs: ev.attrs || {},
+          employee_id: ev.employee_id || null
         }))
       }));
       state.nextId = state.people.length + 1;
@@ -291,7 +292,15 @@
           evCard.className = "event-card";
           const checked = state.selected.has(ev.entry_id) ? "checked" : "";
           evCard.innerHTML = `
-            <div class="event-meta"><strong>${ev.entry_id}</strong><br>${ev.timestamp || "—"} · ${ev.direction || "?"} · ${ev.camera || "?"}</div>
+            <div class="event-meta">
+              <strong>${ev.entry_id}</strong><br>
+              ${ev.timestamp || "—"} · ${ev.direction || "?"} · ${ev.camera || "?"}
+            </div>
+            <div class="event-meta" style="margin-top: 4px;">
+              <label>Employee ID: 
+                <input type="text" class="empid-input" data-idx="${idx}" data-eidx="${eidx}" value="${ev.employee_id || ''}" placeholder="(optional)">
+              </label>
+            </div>
             <div class="thumbs">${renderThumbs(ev.image_paths)}</div>
             ${state.showAttrs ? renderAttrs(ev.attrs) : ""}
             <div class="controls">
@@ -327,6 +336,13 @@
         el.addEventListener("input", e => {
           const idx = parseInt(e.target.dataset.idx, 10);
           state.people[idx].alias = e.target.value;
+        });
+      });
+      document.querySelectorAll(".empid-input").forEach(el => {
+        el.addEventListener("input", e => {
+          const pidx = parseInt(e.target.dataset.idx, 10);
+          const eidx = parseInt(e.target.dataset.eidx, 10);
+          state.people[pidx].events[eidx].employee_id = e.target.value || null;
         });
       });
       document.querySelectorAll("[data-action='toggle']").forEach(btn => {

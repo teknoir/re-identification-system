@@ -22,7 +22,7 @@ MONGO_EVENTS_COLLECTION = os.getenv("MONGO_EVENTS_COLLECTION", "line-crossings")
 FUSION_MODE = "xattn"
 # FUSION_MODE = "baseline"
 MARGIN    = float(os.getenv("MARGIN", "0.00"))
-THRESHOLD = float(os.getenv("THRESHOLD", "0.86"))
+THRESHOLD = float(os.getenv("THRESHOLD", "0.70"))
 TOPK      = int(os.getenv("TOPK", "20"))
 
 app = FastAPI(title="Re-entry Matching Service", version="1.0.0")
