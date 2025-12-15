@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>High-Risk Pair Viewer</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; background: #f5f6fb; color: #111827; }
+    header { background: #0f172a; color: #fff; padding: 18px 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    header h1 { margin: 0; font-size: 20px; }
+    main { max-width: 1600px; margin: 0 auto; padding: 40px; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08); margin-bottom: 16px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .toolbar label { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    select, input { padding: 7px 10px; border: 1px solid #cbd5f5; border-radius: 6px; font-size: 13px; }
+    #pairs { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    .pair { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .pair-info { grid-column: 1 / -1; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; margin-bottom: 10px; }
+    .entry { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; background: #fafcff; }
+    .entry h3 { margin: 0 0 10px; font-size: 14px; }
+    .pair-info p { font-size: 12px; }
+    .meta { font-size: 11px; color: #475569; }
+    .image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 5px; margin-top: 10px; }
+    .image-grid img { max-width: 100%; height: auto; object-fit: cover; border-radius: 4px; border: 1px solid #cbd5f5; cursor: pointer; transition: transform .12s; }
+    .image-grid img:hover { transform: scale(1.1); z-index: 1000; }
+    .risk-hard_neg { color: #b91c1c; }
+    .risk-hard_pos { color: #166534; }
+    .risk-alias_candidate { color: #b45309; }
+    #status { margin-left: auto; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>High-Risk Pair Viewer</h1>
+    <div id="status">Loading...</div>
+  </header>
+  <main>
+    <div class="card toolbar">
+      <label>Filter by Risk:
+        <select id="riskFilter">
+          <option value="">All</option>
+          <option value="hard_neg">Hard Negatives</option>
+          <option value="hard_pos">Hard Positives</option>
+          <option value="alias_candidate">Alias Candidates</option>
+        </select>
+      </label>
+      <label>Filter by Store:
+        <select id="storeFilter">
+          <option value="">All</option>
+        </select>
+      </label>
+      <label>Filter by Day:
+        <select id="dayFilter">
+          <option value="">All</option>
+        </select>
+      </label>
+      <label>Sort by:
+        <select id="sortOrder">
+          <option value="sim_desc">Similarity (High-Low)</option>
+          <option value="sim_asc">Similarity (Low-High)</option>
+          <option value="ts_desc">Timestamp (New-Old)</option>
+          <option value="ts_asc">Timestamp (Old-New)</option>
+          <option value="store_asc">Store (A-Z)</option>
+          <option value="store_desc">Store (Z-A)</option>
+        </select>
+      </label>
+      <button id="update-btn" style="margin-left: auto;">Update Pairs</button>
+      <div id="update-status" style="font-size: 13px; min-width: 150px;"></div>
+    </div>
+    <div id="pairs"></div>
+    <div class="card toolbar">
+        <button id="prevPage">Previous</button>
+        <span id="pageInfo"></span>
+        <button id="nextPage">Next</button>
+    </div>
+  </main>
+
+    <script>
+        let offset = 0;
+        const limit = 100;
+        const basePath = window.location.pathname.replace(/\/static.*/, '') || '';
+        const api = (path) => `${basePath}${path}`;
+
+        async function populateFilters() {
+            try {
+                const [storesRes, daysRes] = await Promise.all([fetch(api('/stores')), fetch(api('/days'))]);
+                const stores = await storesRes.json();
+                const days = await daysRes.json();
+
+                const storeFilter = document.getElementById('storeFilter');
+                stores.forEach(store => {
+                    const option = document.createElement('option');
+                    option.value = store;
+                    option.textContent = store;
+                    storeFilter.appendChild(option);
+                });
+
+                const dayFilter = document.getElementById('dayFilter');
+                days.forEach(day => {
+                    const option = document.createElement('option');
+                    option.value = day;
+                    option.textContent = day;
+                    dayFilter.appendChild(option);
+                });
+            } catch (error) {
+                console.error("Error populating filters:", error);
+            }
+        }
+
+        async function loadPairs() {
+            document.getElementById('status').textContent = 'Loading...';
+            const riskType = document.getElementById('riskFilter').value;
+            const storeId = document.getElementById('storeFilter').value;
+            const dayId = document.getElementById('dayFilter').value;
+            const sortValue = document.getElementById('sortOrder').value;
+
+            let url = `${api('/pairs')}?limit=${limit}&offset=${offset}`;
+            if (riskType) url += `&risk_type=${riskType}`;
+            if (storeId) url += `&store_id=${storeId}`;
+            if (dayId) url += `&day_id=${dayId}`;
+            if (sortValue.startsWith('ts_')) {
+                url += `&ts_sort=${sortValue}`;
+            } else if (sortValue.startsWith('store_')) {
+                url += `&store_sort=${sortValue}`;
+            } else {
+                url += `&sort=${sortValue}`;
+            }
+            
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const pairs = await response.json();
+                const pairsDiv = document.getElementById('pairs');
+                pairsDiv.innerHTML = '';
+                if (pairs.length === 0) {
+                    pairsDiv.innerHTML = '<p>No pairs found.</p>';
+                    updatePageInfo(0);
+                    return;
+                }
+                pairs.forEach(pair => {
+                    const pairDiv = document.createElement('div');
+                    pairDiv.className = 'pair';
+                    pairDiv.innerHTML = `
+                        <div class="pair-info">
+                            <p><strong>Pair #${pair.idx}</strong> | <strong>Similarity:</strong> ${pair.sim.toFixed(4)} | <strong class="risk-${pair.risk_type}">Risk Type: ${pair.risk_type}</strong> | <strong>Same PID:</strong> ${pair.same_pid}</p>
+                        </div>
+                        <div class="entry">
+                            <h3>Entry A: ${pair.entry_id_a}</h3>
+                            <p class="meta">PID: ${pair.pid_a}</p>
+                            <p class="meta">Store: ${pair.store_a} | Camera: ${pair.camera_a} | Day: ${pair.day_a}</p>
+                            <p class="meta">Time: ${pair.ts_a}</p>
+                            <div class="image-grid">
+                                ${pair.images_a.map(img_url => `<img src="${img_url}" alt="Entry A Image">`).join('')}
+                            </div>
+                            <button onclick="excludePerson('${pair.store_a}', '${pair.day_a}', '${pair.entry_id_a}', '${pair.pid_a}', '${pair.entry_id_a}', '${pair.entry_id_b}', this.parentNode.parentNode)" style="background-color: #ef4444; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; margin-top: 10px;">Exclude Person A</button>
+                        </div>
+                        <div class="entry">
+                            <h3>Entry B: ${pair.entry_id_b}</h3>
+                            <p class="meta">PID: ${pair.pid_b}</p>
+                            <p class="meta">Store: ${pair.store_b} | Camera: ${pair.camera_b} | Day: ${pair.day_b}</p>
+                            <p class="meta">Time: ${pair.ts_b}</p>
+                            <div class="image-grid">
+                                ${pair.images_b.map(img_url => `<img src="${img_url}" alt="Entry B Image">`).join('')}
+                            </div>
+                            <button onclick="excludePerson('${pair.store_b}', '${pair.day_b}', '${pair.entry_id_b}', '${pair.pid_b}', '${pair.entry_id_a}', '${pair.entry_id_b}', this.parentNode.parentNode)" style="background-color: #ef4444; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; margin-top: 10px;">Exclude Person B</button>
+                        </div>
+                    `;
+                    const dismissButton = document.createElement('button');
+                    dismissButton.textContent = 'Dismiss / Mark Reviewed';
+                    dismissButton.style = 'background-color: #22c55e; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; grid-column: 1 / -1; margin-top: 10px;';
+                    dismissButton.onclick = () => markReviewed(pair.entry_id_a, pair.entry_id_b, pairDiv);
+                    pairDiv.appendChild(dismissButton);
+                    pairsDiv.appendChild(pairDiv);
+                });
+                updatePageInfo(pairs.length);
+                document.getElementById('status').textContent = '';
+            } catch (error) {
+                console.error('Error loading pairs:', error);
+                document.getElementById('status').textContent = 'Error';
+                document.getElementById('pairs').innerHTML = '<p>Error loading pairs. Please check the console for details.</p>';
+            }
+        }
+
+        function updatePageInfo(loadedCount) {
+            const pageInfo = document.getElementById('pageInfo');
+            const start = offset + 1;
+            const end = offset + loadedCount;
+            pageInfo.textContent = loadedCount > 0 ? `Showing ${start}-${end}` : 'No results';
+            document.getElementById('prevPage').disabled = offset === 0;
+            document.getElementById('nextPage').disabled = loadedCount < limit;
+        }
+
+        async function excludePerson(storeId, dayId, entryId, personId, entryIdA, entryIdB, pairElement) {
+            if (!confirm(`Are you sure you want to exclude person ${personId} from ${storeId}-${dayId}?`)) {
+                return;
+            }
+            try {
+                const response = await fetch(api(`/exclude_person?store_id=${storeId}&day_id=${dayId}&person_id=${personId}&entry_id=${entryId}`), { method: 'POST' });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const result = await response.json();
+                console.log(result.message);
+                // Also mark the pair as reviewed after excluding a person
+                await markReviewed(entryIdA, entryIdB, pairElement);
+            } catch (error) {
+                console.error('Error excluding person:', error);
+                alert(`Failed to exclude person: ${error.message}`);
+            }
+        }
+
+        async function markReviewed(entryIdA, entryIdB, pairElement) {
+            try {
+                const response = await fetch(api(`/mark_reviewed?entry_id_a=${entryIdA}&entry_id_b=${entryIdB}`), { method: 'POST' });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const result = await response.json();
+                console.log(result.message);
+                // Remove the pair from the UI
+                pairElement.remove();
+            } catch (error) {
+                console.error('Error marking pair reviewed:', error);
+                alert(`Failed to mark pair reviewed: ${error.message}`);
+            }
+        }
+
+        ['riskFilter', 'storeFilter', 'dayFilter', 'sortOrder'].forEach(id => {
+            document.getElementById(id).addEventListener('change', () => {
+                offset = 0;
+                loadPairs();
+            });
+        });
+        document.getElementById('prevPage').addEventListener('click', () => {
+            if (offset > 0) {
+                offset -= limit;
+                loadPairs();
+            }
+        });
+
+        document.getElementById('nextPage').addEventListener('click', () => {
+            offset += limit;
+            loadPairs();
+        });
+
+        const updateBtn = document.getElementById('update-btn');
+        const updateStatus = document.getElementById('update-status');
+
+        async function updatePairs() {
+            updateBtn.disabled = true;
+            updateStatus.textContent = 'Updating, please wait...';
+            updateStatus.style.color = '#475569';
+
+            try {
+                const response = await fetch(api('/update'), { method: 'POST' });
+                const result = await response.json();
+
+                if (response.ok) {
+                    updateStatus.textContent = 'Update successful!';
+                    updateStatus.style.color = '#166534';
+                    // Reset filters and reload everything
+                    document.getElementById('riskFilter').value = '';
+                    document.getElementById('storeFilter').innerHTML = '<option value="">All</option>';
+                    document.getElementById('dayFilter').innerHTML = '<option value="">All</option>';
+                    offset = 0;
+                    populateFilters().then(loadPairs);
+                } else {
+                    const errorMsg = result.detail ? (result.detail.message || JSON.stringify(result.detail)) : 'Unknown error';
+                    updateStatus.textContent = `Error: ${errorMsg}`;
+                    updateStatus.style.color = '#b91c1c';
+                    console.error('Update failed:', result.detail);
+                }
+            } catch (error) {
+                updateStatus.textContent = 'Request failed. See console.';
+                updateStatus.style.color = '#b91c1c';
+                console.error('Error during update request:', error);
+            } finally {
+                updateBtn.disabled = false;
+            }
+        }
+
+        updateBtn.addEventListener('click', updatePairs);
+
+        window.onload = () => {
+            populateFilters().then(loadPairs);
+        };
+    </script>
+</body>
+</html>

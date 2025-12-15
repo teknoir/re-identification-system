@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional
 import requests
 from fastapi import Body, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import logging
 from pymongo import MongoClient
@@ -45,6 +45,14 @@ import sys  # noqa: E402
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+PAIRS_VIEWER_ROOT = Path(__file__).resolve().parent
+if str(PAIRS_VIEWER_ROOT) not in sys.path:
+    sys.path.insert(0, str(PAIRS_VIEWER_ROOT))
+
+# Keep the pairs viewer pointed at the same Mongo settings unless explicitly overridden
+os.environ.setdefault("MANIFEST_EDITOR_MONGO", REID_MONGO_URI)
+os.environ.setdefault("MANIFEST_EDITOR_DB", MANIFEST_EDITOR_DB)
+
  # noqa: E402
 
 app = FastAPI(root_path=os.path.join(BASE_URL, "manifest-editor"))
@@ -73,6 +81,16 @@ def get_reid_db():
     if reid_mongo_client is None:
         reid_mongo_client = MongoClient(REID_MONGO_URI)
     return reid_mongo_client[REID_MONGO_DB]
+
+
+# Mount the pairs viewer as a sub-application so it can share the same server instance
+try:
+    from pairs_viewer import server as pairs_viewer_server  # type: ignore
+
+    app.mount("/pairs-viewer", pairs_viewer_server.app)
+    logging.info("Mounted pairs viewer at /pairs-viewer (static UI at /pairs-viewer/static/index.html)")
+except Exception as exc:  # pragma: no cover - optional integration
+    logging.warning("Pairs viewer not mounted: %s", exc)
 
 
 def load_manifest(source: str) -> Dict[str, Any]:
