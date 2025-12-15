@@ -73,6 +73,7 @@ if not MANIFEST_EDITOR_IMAGE_API.startswith("/"):
 # Always target gt_tools for pairs viewer writes, regardless of manifest editor DB
 MONGO_URI = os.getenv("MANIFEST_EDITOR_MONGO", "mongodb://teknoir:change-me@localhost:37017")
 DB_NAME = "gt_tools"
+PAIRS_COLLECTION = os.getenv("PAIRS_COLLECTION", "high_risk_pairs")
 
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
@@ -139,11 +140,13 @@ def _rewrite_image(uri: Optional[str]) -> Optional[str]:
     return uri
 
 
-def _entry_images(entry: Optional[dict], fallback: Optional[str] = None) -> List[str]:
+def _entry_images(entry: Optional[dict], fallback: Optional[str] = None, supplied: Optional[List[str]] = None) -> List[str]:
     sources: List[str] = []
     if entry:
         raw = entry.get("files") or entry.get("images") or entry.get("image_paths") or []
         sources = [_rewrite_image(img) for img in raw if img]
+    if not sources and supplied:
+        sources = [_rewrite_image(img) for img in supplied if img]
     if not sources and fallback:
         fb = _rewrite_image(fallback)
         if fb:
@@ -152,6 +155,21 @@ def _entry_images(entry: Optional[dict], fallback: Optional[str] = None) -> List
 
 
 def load_pairs() -> List[dict]:
+    # Prefer Mongo-backed pairs if configured
+    if PAIRS_COLLECTION:
+        try:
+            docs = list(db[PAIRS_COLLECTION].find({}))
+            if docs:
+                for d in docs:
+                    if "image_a" in d:
+                        d["image_a"] = _rewrite_image(d.get("image_a"))
+                    if "image_b" in d:
+                        d["image_b"] = _rewrite_image(d.get("image_b"))
+                print(f"[init] loaded {len(docs)} pairs from Mongo collection {PAIRS_COLLECTION}")
+                return docs
+        except Exception as exc:
+            print(f"[warn] could not load pairs from Mongo: {exc}")
+
     if not PAIRS_JSONL.exists():
         raise RuntimeError(f"PAIRS_JSONL file not found: {PAIRS_JSONL}")
     out: List[dict] = []
@@ -164,7 +182,6 @@ def load_pairs() -> List[dict]:
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            # rewrite image URIs if BUCKET_PREFIX is set
             obj["image_a"] = _rewrite_image(obj.get("image_a"))
             obj["image_b"] = _rewrite_image(obj.get("image_b"))
             out.append(obj)
@@ -333,8 +350,8 @@ def list_pairs(
         entry_a = _MANIFEST_CACHE.get(r.get("entry_id_a"))
         entry_b = _MANIFEST_CACHE.get(r.get("entry_id_b"))
 
-        images_a = _entry_images(entry_a, r.get("image_a"))
-        images_b = _entry_images(entry_b, r.get("image_b"))
+        images_a = _entry_images(entry_a, r.get("image_a"), r.get("images_a"))
+        images_b = _entry_images(entry_b, r.get("image_b"), r.get("images_b"))
 
         out.append(
             PairOut(
@@ -374,8 +391,8 @@ def get_pair(idx: int):
     entry_a = _MANIFEST_CACHE.get(r.get("entry_id_a"))
     entry_b = _MANIFEST_CACHE.get(r.get("entry_id_b"))
 
-    images_a = _entry_images(entry_a, r.get("image_a"))
-    images_b = _entry_images(entry_b, r.get("image_b"))
+    images_a = _entry_images(entry_a, r.get("image_a"), r.get("images_a"))
+    images_b = _entry_images(entry_b, r.get("image_b"), r.get("images_b"))
 
     return PairOut(
         idx=idx,
@@ -437,15 +454,13 @@ import subprocess
 def update_pairs():
     """Run the pair generation script and reload the data."""
     model_run = "xattn_pk_64_2_v5"
-    output_dir = "gt"
-    pairs_jsonl_path = Path(output_dir) / "pairs_hard.jsonl"
-
-    # The MANIFEST_JSON path also needs to be located relative to the script run
-    # Assuming it's in the same base directory structure
-    manifest_path = f"model/encoder/runs/entry.json"
+    output_dir = "gt"  # unused when --no-files is set
+    manifest_path = "model/encoder/runs/entry.json"
+    script_path = Path(__file__).parent / "find_high_risk_pairs.py"
+    pairs_coll = PAIRS_COLLECTION or "high_risk_pairs"
 
     command = f"""
-        python3 gt/find_high_risk_pairs.py \
+        python3 {script_path} \
           --vecs model/encoder/runs/{model_run}/entry_vectors.npy \
           --ids model/encoder/runs/{model_run}/entry_ids.txt \
           --manifest {manifest_path} \
@@ -453,7 +468,13 @@ def update_pairs():
           --neg-threshold 0.86 \
           --pos-threshold 0.70 \
           --topk-neg 20 \
-          --output-dir {output_dir}
+          --output-dir {output_dir} \
+          --no-files \
+          --mongo-uri "{MONGO_URI}" \
+          --mongo-db "{DB_NAME}" \
+          --mongo-coll "{pairs_coll}" \
+          --mongo-drop \
+          --run-id "{model_run}"
     """
     try:
         print("Running update script...")
@@ -471,14 +492,8 @@ def update_pairs():
 
         # Reload the pairs into memory
         global _PAIRS_CACHE, MANIFEST_JSON
-        # Update environment or global vars to point to new files for reloading
-        os.environ["PAIRS_JSONL"] = str(pairs_jsonl_path)
-        os.environ["MANIFEST_JSON"] = manifest_path
-        PAIRS_JSONL = pairs_jsonl_path
-        MANIFEST_JSON = Path(manifest_path)
-
         _PAIRS_CACHE = load_pairs()
-        print(f"[reload] loaded {len(_PAIRS_CACHE)} pairs from {PAIRS_JSONL}")
+        print(f"[reload] loaded {len(_PAIRS_CACHE)} pairs after Mongo update")
 
         return {
             "status": "success",

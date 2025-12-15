@@ -35,6 +35,15 @@ spec:
                 secretKeyRef:
                   name: re-id-mongo
                   key: uri
+            - name: MANIFEST_EDITOR_MONGO
+              valueFrom:
+                secretKeyRef:
+                  name: re-id-mongo
+                  key: uri
+            - name: MANIFEST_EDITOR_DB
+              value: "gt_tools"
+            - name: PAIRS_COLLECTION
+              value: {{ .Values.manifestEditor.pairsCollection | default "high_risk_pairs" | quote }}
           resources:
             requests:
               cpu: 250m
