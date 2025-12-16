@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from matcher import ReEntryMatcher
+from pymongo import MongoClient
 
 # BE SURE TO MAKE SURE THIS MATCHES THE MODEL_CKPT IN THE run_local.sh file
 MODEL_CKPT = os.getenv("MODEL_CKPT", "matching-service/models/encoder/model.pt")
@@ -18,6 +19,9 @@ MONGO_DB     = os.getenv("MONGO_DB", "reid_service")
 MONGO_ENTRIES_COLLECTION = os.getenv("MONGO_ENTRIES_COLLECTION", "observations")
 MONGO_EVENTS_COLLECTION = os.getenv("MONGO_EVENTS_COLLECTION", "line-crossings")
 
+HISTORIAN_MONGO_URI = os.getenv("HISTORIAN_MONGODB_URI", MONGO_URI)
+HISTORIAN_DB = os.getenv("HISTORIAN_DB", "historian")
+FACES_COLLECTION = os.getenv("FACES_COLLECTION", "faces")
 
 FUSION_MODE = "xattn"
 # FUSION_MODE = "baseline"
@@ -44,6 +48,15 @@ matcher = ReEntryMatcher(
     threshold=THRESHOLD,
     topk=TOPK,
 )
+
+faces_client: Optional[MongoClient] = None
+faces_coll = None
+try:
+    faces_client = MongoClient(HISTORIAN_MONGO_URI) if HISTORIAN_MONGO_URI else None
+    if faces_client:
+        faces_coll = faces_client[HISTORIAN_DB][FACES_COLLECTION]
+except Exception as exc:
+    logging.warning("Faces Mongo not initialized: %s", exc)
 
 class MatchRequest(BaseModel):
     day_id: str = Field(..., description="e.g., 2025-11-06")
@@ -84,6 +97,29 @@ def match(req: MatchRequest):
         attrs=req.attrs or {},
         topk=req.topk,
     )
+
+    face_match_id = None
+    if faces_coll:
+        try:
+            face_doc = faces_coll.find_one(
+                {"spec.detection.id": req.entry_id},
+                {"spec.match.id": 1, "_id": 0},
+            )
+            if face_doc:
+                face_match_id = face_doc.get("spec", {}).get("match", {}).get("id")
+        except Exception as exc:  # pragma: no cover
+            logging.warning("faces lookup failed for entry_id %s: %s", req.entry_id, exc)
+
+    if face_match_id and matcher.entries_coll:
+        try:
+            matcher.entries_coll.update_one(
+                {"_id": req.entry_id},
+                {"$set": {"employee_id": face_match_id}},
+                upsert=False,
+            )
+        except Exception as exc:  # pragma: no cover
+            logging.warning("failed to upsert employee_id for %s: %s", req.entry_id, exc)
+
     # runtime rule is applied inside query_then_add (single-threshold cosine match)
     return {
         "ok": True,
@@ -92,6 +128,7 @@ def match(req: MatchRequest):
         "timestamp": req.timestamp,
         "direction": req.direction,
         "camera": req.camera,
+        "employee_id": face_match_id,
         **out,
     }
 

@@ -67,6 +67,14 @@
       <button id="update-btn" style="margin-left: auto;">Update Pairs</button>
       <div id="update-status" style="font-size: 13px; min-width: 150px;"></div>
     </div>
+    <div class="card" style="font-size:13px; color:#334155;">
+      <strong>Guidance</strong>
+      <ul style="margin:8px 0 0 18px; padding:0; line-height:1.5;">
+        <li><strong>Hard positives</strong>: same PID but low similarity (suspicious merges). Exclude one if they are actually different people, dismiss if the same person.</li>
+        <li><strong>Hard negatives</strong>: different PID but high similarity. Fix the ground truth if they are the same person. Dismiss if different person.</li>
+        <li><strong>Alias candidates</strong>: same store, different day, very high similarity. Exclude one if they are the same person, dismiss if different person.</li>
+      </ul>
+    </div>
     <div id="pairs"></div>
     <div class="card toolbar">
         <button id="prevPage">Previous</button>
