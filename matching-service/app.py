@@ -26,7 +26,7 @@ FACES_COLLECTION = os.getenv("FACES_COLLECTION", "faces")
 FUSION_MODE = "xattn"
 # FUSION_MODE = "baseline"
 MARGIN    = float(os.getenv("MARGIN", "0.00"))
-THRESHOLD = float(os.getenv("THRESHOLD", "0.70"))
+THRESHOLD = float(os.getenv("THRESHOLD", "0.84"))
 TOPK      = int(os.getenv("TOPK", "20"))
 
 app = FastAPI(title="Re-entry Matching Service", version="1.0.0")
@@ -99,7 +99,7 @@ def match(req: MatchRequest):
     )
 
     face_match_id = None
-    if faces_coll:
+    if faces_coll is not None:
         try:
             face_doc = faces_coll.find_one(
                 {"spec.detection.id": req.entry_id},
@@ -110,15 +110,31 @@ def match(req: MatchRequest):
         except Exception as exc:  # pragma: no cover
             logging.warning("faces lookup failed for entry_id %s: %s", req.entry_id, exc)
 
-    if face_match_id and matcher.entries_coll:
+    # Propagate employee_id from face lookup; only persist when the face match is for this entry
+    employee_id = None
+    if face_match_id is not None:
+        employee_id = face_match_id
+        if matcher.db is None:
+            raise HTTPException(status_code=500, detail="Mongo unavailable for employee_id upsert")
         try:
-            matcher.entries_coll.update_one(
+            matcher.db[matcher.entries_collection].update_one(
                 {"_id": req.entry_id},
                 {"$set": {"employee_id": face_match_id}},
                 upsert=False,
             )
+            logging.info("face match for %s => employee_id=%s (persisted to observations)", req.entry_id, face_match_id)
         except Exception as exc:  # pragma: no cover
             logging.warning("failed to upsert employee_id for %s: %s", req.entry_id, exc)
+            raise HTTPException(status_code=500, detail="Failed to upsert employee_id") from exc
+    elif out.get("status") == "match" and out.get("match_id") and matcher.db is not None:
+        try:
+            match_doc = matcher.db[matcher.entries_collection].find_one(
+                {"_id": out["match_id"]},
+                {"employee_id": 1},
+            )
+            employee_id = (match_doc or {}).get("employee_id")
+        except Exception as exc:  # pragma: no cover
+            logging.warning("failed to fetch employee_id from match %s: %s", out.get("match_id"), exc)
 
     # runtime rule is applied inside query_then_add (single-threshold cosine match)
     return {
@@ -128,7 +144,7 @@ def match(req: MatchRequest):
         "timestamp": req.timestamp,
         "direction": req.direction,
         "camera": req.camera,
-        "employee_id": face_match_id,
+        "employee_id": employee_id,
         **out,
     }
 
