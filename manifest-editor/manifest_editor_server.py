@@ -569,10 +569,11 @@ def image_proxy(source: str = Query(..., description="gs:// URI or remote path t
 
 @app.get("/api/manifest-proxy")
 def manifest_proxy(
-    day_id: str,
-    store_id: str,
-    entry_id: Optional[str] = None,
-    emp_id: Optional[str] = None,
+    day_id: Optional[str] = Query(None),
+    store_id: Optional[str] = Query(None),
+    entry_id: Optional[str] = Query(None),
+    emp_id: Optional[str] = Query(None),
+    entry_lookup: Optional[str] = Query(None, description="Entry ID to resolve to an employee/person"),
     camera: Optional[List[str]] = Query(None),
     bypass_mongo: bool = Query(False, description="Bypass mongo check and go straight to the API"),
 ):
@@ -580,7 +581,68 @@ def manifest_proxy(
     if not bypass_mongo:
         try:
             settings = get_settings()
+            if entry_lookup and (not day_id or not store_id):
+                # Resolve store/day from entry lookup in clusters (persons is a dict; entries is a list)
+                db = get_manifest_editor_db()
+                pipeline = [
+                    {
+                        "$match": {
+                            "$expr": {
+                                "$anyElementTrue": {
+                                    "$map": {
+                                        "input": {"$objectToArray": "$persons"},
+                                        "as": "p",
+                                        "in": {
+                                            "$anyElementTrue": {
+                                                "$map": {
+                                                    "input": {"$ifNull": ["$$p.v.entries", []]},
+                                                    "as": "e",
+                                                    "in": {"$eq": ["$$e.entry_id", entry_lookup]},
+                                                }
+                                            }
+                                        },
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {"$limit": 1},
+                ]
+                cluster = next(db[CLUSTERS_COLL].aggregate(pipeline), None)
+                if cluster:
+                    store_id = cluster.get("store_id")
+                    day_id = cluster.get("day_id")
+            if not day_id or not store_id:
+                raise HTTPException(status_code=400, detail="day_id and store_id are required (or resolvable) for manifest lookup")
+
             mongo_data = read_manifest_from_mongo(store_id, day_id, settings)
+
+            # If entry_lookup is provided, resolve its person_id and restrict to that person
+            if entry_lookup and mongo_data.get("people"):
+                entry_lookup_person_ids = set()
+                for person in mongo_data.get("people", []):
+                    for event in person.get("events", []):
+                        if event.get("entry_id") == entry_lookup:
+                            entry_lookup_person_ids.add(person["person_id"])
+                            break
+                # Find employee_ids on those persons
+                target_emp_ids = set()
+                for person in mongo_data.get("people", []):
+                    if person["person_id"] not in entry_lookup_person_ids:
+                        continue
+                    for event in person.get("events", []):
+                        emp_val = event.get("employee_id")
+                        if emp_val:
+                            target_emp_ids.add(emp_val)
+                # If we found employee_ids, include any persons that have events with those employee_ids
+                if target_emp_ids:
+                    mongo_data["people"] = [
+                        p for p in mongo_data["people"]
+                        if p["person_id"] in entry_lookup_person_ids
+                        or any((ev.get("employee_id") in target_emp_ids) for ev in p.get("events", []))
+                    ]
+                else:
+                    mongo_data["people"] = [p for p in mongo_data["people"] if p["person_id"] in entry_lookup_person_ids]
 
             # If emp_id is provided, filter the results
             if emp_id and mongo_data.get("people"):
@@ -592,6 +654,18 @@ def manifest_proxy(
                             break
                 
                 mongo_data["people"] = [p for p in mongo_data["people"] if p["person_id"] in employee_person_ids]
+
+            # Strip heavy fields for entry_lookup or emp_id filters
+            if mongo_data.get("people") and (entry_lookup or emp_id):
+                for person in mongo_data["people"]:
+                    for event in person.get("events", []):
+                        event.pop("embeddings", None)
+                        event.pop("images", None)
+                        event.pop("display_images", None)
+                # attrs live on the event? If present, strip them as well
+                for person in mongo_data["people"]:
+                    for event in person.get("events", []):
+                        event.pop("attrs", None)
 
             # Add external_door field for data sourced from mongo
             if mongo_data.get("people"):
