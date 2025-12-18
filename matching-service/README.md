@@ -238,7 +238,7 @@ Generates embeddings + VLM attrs and emits a ready-to-post `/match` payload:
 
 ```bash
 python entry_pipeline/process_entry.py \
-  --mongo-uri "mongodb://teknoir:98jgs2LdOQC2@localhost:27017/historian?authSource=admin" \
+  --mongo-uri "mongodb://teknoir:change-me@localhost:27017/historian?authSource=admin" \
   --mongo-collection line-crossings \
   --alerts-collection alerts \
   --entries-collection entries \
@@ -253,7 +253,7 @@ Batch version (process all cameras matching the prefix, in this case all cams fo
 ```bash
 python entry_pipeline/batch_process_entries.py \
   --prefix nc0009 \
-  --mongo-uri "mongodb://teknoir:98jgs2LdOQC2@localhost:27017/historian?authSource=admin" \
+  --mongo-uri "mongodb://teknoir:change-me@localhost:27017/historian?authSource=admin" \
   --mongo-collection line-crossings \
   --alerts-collection alerts \
   --entries-collection entries \
