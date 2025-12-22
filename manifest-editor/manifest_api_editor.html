@@ -55,6 +55,7 @@
       <div class="toolbar-group">
         <select id="cameraFilter"><option value="">All cameras</option></select>
         <label><input type="checkbox" id="hideExcluded"> Hide excluded</label>
+        <label><input type="checkbox" id="employeesOnly"> Employees only</label>
         <label><input type="checkbox" id="toggleAttrs"> Show attributes</label>
         <button id="addPerson" type="button">Add person</button>
         <input type="text" id="search" placeholder="Search person or entry">
@@ -96,7 +97,7 @@
     const getApiUrl = (path) => `${EDITOR_BASE}${path}`;
 
     const PAGE_SIZE = 100;
-    const state = { store:"", day:"", people:[], nextId:1, search:"", camera:"", hideExcluded:true, selected:new Set(), showAttrs:false, adjudicated:false, page:1 };
+    const state = { store:"", day:"", people:[], nextId:1, search:"", camera:"", hideExcluded:true, employeesOnly:false, selected:new Set(), showAttrs:false, adjudicated:false, page:1 };
     const statusEl = document.getElementById("status");
     const peopleEl = document.getElementById("people");
     let loadingEl = null;
@@ -115,6 +116,9 @@
       hideExcludedEl.checked = !!state.hideExcluded;
       hideExcludedEl.addEventListener("change", e => { state.hideExcluded = e.target.checked; state.page = 1; render(); });
       document.getElementById("toggleAttrs").addEventListener("change", e => { state.showAttrs = e.target.checked; render(); });
+      const employeesOnlyEl = document.getElementById("employeesOnly");
+      employeesOnlyEl.checked = !!state.employeesOnly;
+      employeesOnlyEl.addEventListener("change", e => { state.employeesOnly = e.target.checked; state.page = 1; render(); });
       document.getElementById("addPerson").addEventListener("click", () => addPerson());
       document.getElementById("deleteEmpties").addEventListener("click", () => deleteEmptyClusters());
       document.getElementById("saveState").addEventListener("click", () => saveToMongo());
@@ -246,6 +250,10 @@
     function filteredPeople(){
       return state.people.filter(p => {
         if(state.hideExcluded && p.exclude) return false;
+        if(state.employeesOnly){
+          const hasEmp = p.events.some(ev => !!ev.employee_id);
+          if(!hasEmp) return false;
+        }
         if(state.search){
           const text = [p.person_id, p.alias || "", ...p.events.map(ev => ev.entry_id)].join(" ").toLowerCase();
           if(!text.includes(state.search)) return false;
