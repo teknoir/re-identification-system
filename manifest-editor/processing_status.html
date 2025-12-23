@@ -24,6 +24,7 @@
     td a { color: #1d4ed8; text-decoration: none; }
     td a:hover { text-decoration: underline; }
     #status { margin-top: 10px; font-style: italic; color: #64748b; }
+    .stats { font-size: 11px; color: #475569; margin-top: 4px; line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -113,7 +114,12 @@
           if (item) {
             const cellClass = item.status; // status can be 'adjudicated', 'processed', or 'none'
             const manifestEditorUrl = getApiUrl(`/manifest_editor?day_id=${day}&store_id=${store}`);
-            const cellContent = `<a href="${manifestEditorUrl}" target="_blank">${item.count}</a>`;
+            const stats = `
+              <div class="stats">
+                entries: ${item.count} · excluded entries: ${item.excluded_entries || 0}<br>
+                clusters: ${item.clusters_included || 0} incl / ${item.clusters_excluded || 0} excl
+              </div>`;
+            const cellContent = `<a href="${manifestEditorUrl}" target="_blank">${item.count}</a>${stats}`;
             table += `<td class="${cellClass}">${cellContent}</td>`;
           } else {
             table += '<td>-</td>';

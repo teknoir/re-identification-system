@@ -379,9 +379,71 @@ def grid_status(
         {"$match": match_query},
         {"$group": {"_id": {"day_id": "$day_id", "store_id": "$store_id"}, "count": {"$sum": 1}}}
     ]
+
+    # Counts per cluster: included/excluded clusters and excluded entries
+    # We treat each person in the document as a cluster.
+    cluster_counts = list(clusters_coll.aggregate([
+        {"$match": {"$or": [{"day_id": d, "store_id": s} for d, s in day_store_pairs]}},
+        {
+            "$project": {
+                "day_id": 1,
+                "store_id": 1,
+                "persons_array": {"$objectToArray": {"$ifNull": ["$persons", {}]}},
+            }
+        },
+        {"$unwind": "$persons_array"},
+        {
+            "$project": {
+                "day_id": 1,
+                "store_id": 1,
+                "person_include": {"$ifNull": ["$persons_array.v.include", True]},
+                "entries_list": {"$ifNull": ["$persons_array.v.entries", []]},
+            }
+        },
+        {
+            "$project": {
+                "day_id": 1,
+                "store_id": 1,
+                "person_include": 1,
+                "entries_count": {"$size": "$entries_list"},
+            }
+        },
+        {
+            "$group": {
+                "_id": {"day_id": "$day_id", "store_id": "$store_id"},
+                "clusters_total": {"$sum": 1},
+                "clusters_excluded": {
+                    "$sum": {"$cond": [{"$eq": ["$person_include", False]}, 1, 0]}
+                },
+                "excluded_entries": {
+                    "$sum": {
+                        "$cond": [
+                            {"$eq": ["$person_include", False]},
+                            "$entries_count",
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "day_id": "$_id.day_id",
+                "store_id": "$_id.store_id",
+                "clusters_total": 1,
+                "clusters_excluded": 1,
+                "clusters_included": {"$subtract": ["$clusters_total", "$clusters_excluded"]},
+                "excluded_entries": 1
+            }
+        }
+    ]))
     entry_counts = {
         (item['_id']['day_id'], item['_id']['store_id']): item['count']
         for item in entries_coll.aggregate(entry_count_pipeline)
+    }
+    cluster_counts_map = {
+        (cc["day_id"], cc["store_id"]): cc for cc in cluster_counts
     }
 
     # 5. Build grid data and determine status
@@ -409,7 +471,11 @@ def grid_status(
             "day_id": day_id,
             "store_id": store_id,
             "count": count,
-            "status": status
+            "status": status,
+            "clusters_total": cluster_counts_map.get(key, {}).get("clusters_total", 0),
+            "clusters_excluded": cluster_counts_map.get(key, {}).get("clusters_excluded", 0),
+            "clusters_included": cluster_counts_map.get(key, {}).get("clusters_included", 0),
+            "excluded_entries": cluster_counts_map.get(key, {}).get("excluded_entries", 0),
         })
 
     all_days = sorted(list(day_set), reverse=True)
