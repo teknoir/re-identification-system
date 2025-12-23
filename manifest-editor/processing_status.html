@@ -24,12 +24,14 @@
     td a { color: #1d4ed8; text-decoration: none; }
     td a:hover { text-decoration: underline; }
     #status { margin-top: 10px; font-style: italic; color: #64748b; }
-    .cell-main { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
-    .pill-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 4px; }
-    .pill { background: #e2e8f0; border-radius: 10px; padding: 3px 8px; font-size: 11px; color: #0f172a; }
-    .pill-muted { background: #e5e7eb; color: #475569; }
-    .pill-green { background: #bbf7d0; color: #14532d; }
-    .pill-red { background: #fecdd3; color: #9f1239; }
+    .cell-main { font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; background: #e5e7eb; border-radius: 999px; padding: 6px 10px; font-size: 11px; color: #0f172a; margin: 3px 0; white-space: nowrap; }
+    .pill .label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.2px; font-size: 10px; color: #475569; }
+    .pill .value { font-weight: 700; }
+    .pill .breakdown { font-weight: 600; color: #0f172a; }
+    .pill .kept { color: #15803d; }
+    .pill .excl { color: #b91c1c; }
+    .pill-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
   </style>
 </head>
 <body>
@@ -120,14 +122,20 @@
             const cellClass = item.status; // status can be 'adjudicated', 'processed', or 'none'
             const manifestEditorUrl = getApiUrl(`/manifest_editor?day_id=${day}&store_id=${store}`);
             const stats = `
-              <div class="cell-main"><a href="${manifestEditorUrl}" target="_blank">${item.count} entries</a></div>
+              <div class="cell-main"><a href="${manifestEditorUrl}" target="_blank">${item.count} line-crossings</a></div>
               <div class="pill-row">
-                <span class="pill">entries ${item.count}</span>
-                <span class="pill pill-muted">excluded ${item.excluded_entries || 0}</span>
-              </div>
-              <div class="pill-row">
-                <span class="pill pill-green">clusters ${item.clusters_included || 0} incl</span>
-                <span class="pill pill-red">clusters ${item.clusters_excluded || 0} excl</span>
+                <span class="pill">
+                  <span class="label">Line-crossings</span>
+                  <span class="breakdown"><span class="kept">${item.count}</span> kept | <span class="excl">${item.excluded_entries || 0}</span> excl</span>
+                </span>
+                <span class="pill">
+                  <span class="label">Clusters</span>
+                  <span class="breakdown"><span class="kept">${item.clusters_included || 0}</span> kept | <span class="excl">${item.clusters_excluded || 0}</span> excl</span>
+                </span>
+                <span class="pill">
+                  <span class="label">Emp clusters</span>
+                  <span class="breakdown"><span class="kept">${item.clusters_employee_incl || 0}</span> kept | <span class="excl">${item.clusters_employee_excl || 0}</span> excl</span>
+                </span>
               </div>`;
             const cellContent = stats;
             table += `<td class="${cellClass}">${cellContent}</td>`;
