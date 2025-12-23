@@ -16,7 +16,7 @@
     button { padding: 7px 12px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; background: #334155; color: #fff; }
     #grid-container { overflow-x: auto; }
     table { border-collapse: collapse; width: 100%; font-size: 12px; }
-    th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: center; }
+    th, td { border: 1px solid #e2e8f0; padding: 10px 8px; text-align: center; }
     th { background: #f8fafc; }
     td.adjudicated { background-color: #dcfce7; } /* Green */
     td.processed { background-color: #fef9c3; } /* Yellow */
@@ -24,7 +24,12 @@
     td a { color: #1d4ed8; text-decoration: none; }
     td a:hover { text-decoration: underline; }
     #status { margin-top: 10px; font-style: italic; color: #64748b; }
-    .stats { font-size: 11px; color: #475569; margin-top: 4px; line-height: 1.4; }
+    .cell-main { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 4px; }
+    .pill { background: #e2e8f0; border-radius: 10px; padding: 3px 8px; font-size: 11px; color: #0f172a; }
+    .pill-muted { background: #e5e7eb; color: #475569; }
+    .pill-green { background: #bbf7d0; color: #14532d; }
+    .pill-red { background: #fecdd3; color: #9f1239; }
   </style>
 </head>
 <body>
@@ -115,11 +120,16 @@
             const cellClass = item.status; // status can be 'adjudicated', 'processed', or 'none'
             const manifestEditorUrl = getApiUrl(`/manifest_editor?day_id=${day}&store_id=${store}`);
             const stats = `
-              <div class="stats">
-                entries: ${item.count} · excluded entries: ${item.excluded_entries || 0}<br>
-                clusters: ${item.clusters_included || 0} incl / ${item.clusters_excluded || 0} excl
+              <div class="cell-main"><a href="${manifestEditorUrl}" target="_blank">${item.count} entries</a></div>
+              <div class="pill-row">
+                <span class="pill">entries ${item.count}</span>
+                <span class="pill pill-muted">excluded ${item.excluded_entries || 0}</span>
+              </div>
+              <div class="pill-row">
+                <span class="pill pill-green">clusters ${item.clusters_included || 0} incl</span>
+                <span class="pill pill-red">clusters ${item.clusters_excluded || 0} excl</span>
               </div>`;
-            const cellContent = `<a href="${manifestEditorUrl}" target="_blank">${item.count}</a>${stats}`;
+            const cellContent = stats;
             table += `<td class="${cellClass}">${cellContent}</td>`;
           } else {
             table += '<td>-</td>';
