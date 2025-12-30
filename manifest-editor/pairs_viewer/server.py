@@ -117,6 +117,10 @@ class PairOut(BaseModel):
     image_b: Optional[str] = None
     images_a: List[str] = []
     images_b: List[str] = []
+    vis_sim: Optional[List[List[float]]] = None
+    vis_sim_shape: Optional[List[int]] = None
+    vis_sim_stats: Optional[dict] = None
+    entry_sims: Optional[dict] = None
 
 
 def _resolve_image_uri(uri: str) -> str:
@@ -155,37 +159,40 @@ def _entry_images(entry: Optional[dict], fallback: Optional[str] = None, supplie
 
 
 def load_pairs() -> List[dict]:
-    # Prefer Mongo-backed pairs if configured
-    if PAIRS_COLLECTION:
-        try:
-            docs = list(db[PAIRS_COLLECTION].find({}))
-            if docs:
-                for d in docs:
-                    if "image_a" in d:
-                        d["image_a"] = _rewrite_image(d.get("image_a"))
-                    if "image_b" in d:
-                        d["image_b"] = _rewrite_image(d.get("image_b"))
-                print(f"[init] loaded {len(docs)} pairs from Mongo collection {PAIRS_COLLECTION}")
-                return docs
-        except Exception as exc:
-            print(f"[warn] could not load pairs from Mongo: {exc}")
+    """Load pairs exclusively from Mongo."""
+    if not PAIRS_COLLECTION:
+        raise RuntimeError("PAIRS_COLLECTION not configured for Mongo load.")
+    docs: List[dict] = list(db[PAIRS_COLLECTION].find({}))
 
-    if not PAIRS_JSONL.exists():
-        raise RuntimeError(f"PAIRS_JSONL file not found: {PAIRS_JSONL}")
-    out: List[dict] = []
-    with PAIRS_JSONL.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            obj["image_a"] = _rewrite_image(obj.get("image_a"))
-            obj["image_b"] = _rewrite_image(obj.get("image_b"))
-            out.append(obj)
-    return out
+    for d in docs:
+        if "image_a" in d:
+            d["image_a"] = _rewrite_image(d.get("image_a"))
+        if "image_b" in d:
+            d["image_b"] = _rewrite_image(d.get("image_b"))
+        # Pass through any similarity artifacts for visualization
+        artifacts = d.get("artifacts") or {}
+        if artifacts.get("vis_sim"):
+            d["vis_sim"] = artifacts.get("vis_sim")
+            d["vis_sim_shape"] = artifacts.get("vis_sim_shape")
+            d["vis_sim_stats"] = artifacts.get("vis_sim_stats")
+        if artifacts.get("entry_sims"):
+            d["entry_sims"] = artifacts.get("entry_sims")
+    try:
+        sample_keys = list(docs[0].keys()) if docs else []
+        has_vis = bool(docs and docs[0].get("vis_sim"))
+        has_entry_sims = bool(docs and docs[0].get("entry_sims"))
+        logger.info(
+            "Loaded %d pairs from %s.%s sample_keys=%s vis_sim=%s entry_sims=%s",
+            len(docs),
+            DB_NAME,
+            PAIRS_COLLECTION,
+            sample_keys,
+            has_vis,
+            has_entry_sims,
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Failed to log sample for pairs: %s", exc)
+    return docs
 
 def load_manifest() -> Dict[str, dict]:
     if not MANIFEST_JSON.exists():
@@ -196,10 +203,9 @@ def load_manifest() -> Dict[str, dict]:
 # load once at startup
 try:
     _PAIRS_CACHE: List[dict] = load_pairs()
-    print(f"[init] loaded {len(_PAIRS_CACHE)} pairs from {PAIRS_JSONL}")
 except Exception as exc:  # pragma: no cover
     _PAIRS_CACHE = []
-    print(f"[warn] could not load pairs from {PAIRS_JSONL}: {exc}")
+    print(f"[warn] could not load pairs from Mongo: {exc}")
 
 try:
     _MANIFEST_CACHE: Dict[str, dict] = load_manifest()
@@ -375,6 +381,10 @@ def list_pairs(
                 image_b=r.get("image_b"),
                 images_a=images_a,
                 images_b=images_b,
+                vis_sim=r.get("vis_sim"),
+                vis_sim_shape=r.get("vis_sim_shape"),
+                vis_sim_stats=r.get("vis_sim_stats"),
+                entry_sims=r.get("entry_sims"),
             )
         )
     return out
@@ -387,6 +397,13 @@ def get_pair(idx: int):
     if idx < 0 or idx >= len(_PAIRS_CACHE):
         raise HTTPException(status_code=404, detail="Index out of range")
     r = _PAIRS_CACHE[idx]
+    logger.info(
+        "get_pair idx=%s keys=%s vis_sim=%s entry_sims=%s",
+        idx,
+        list(r.keys()),
+        bool(r.get("vis_sim")),
+        bool(r.get("entry_sims")),
+    )
 
     entry_a = _MANIFEST_CACHE.get(r.get("entry_id_a"))
     entry_b = _MANIFEST_CACHE.get(r.get("entry_id_b"))
@@ -415,6 +432,10 @@ def get_pair(idx: int):
         image_b=r.get("image_b"),
         images_a=images_a,
         images_b=images_b,
+        vis_sim=r.get("vis_sim"),
+        vis_sim_shape=r.get("vis_sim_shape"),
+        vis_sim_stats=r.get("vis_sim_stats"),
+        entry_sims=r.get("entry_sims"),
     )
 
 @app.get("/entry/{entry_id}")
@@ -452,62 +473,17 @@ import subprocess
 
 @app.post("/update")
 def update_pairs():
-    """Run the pair generation script and reload the data."""
-    model_run = "xattn_pk_64_2_v5"
-    output_dir = "gt"  # unused when --no-files is set
-    manifest_path = "model/encoder/runs/entry.json"
-    script_path = Path(__file__).parent / "find_high_risk_pairs.py"
-    pairs_coll = PAIRS_COLLECTION or "high_risk_pairs"
-
-    command = f"""
-        python3 {script_path} \
-          --vecs model/encoder/runs/{model_run}/entry_vectors.npy \
-          --ids model/encoder/runs/{model_run}/entry_ids.txt \
-          --manifest {manifest_path} \
-          --gt model/encoder/runs/multi_gt.json \
-          --neg-threshold 0.86 \
-          --pos-threshold 0.70 \
-          --topk-neg 20 \
-          --output-dir {output_dir} \
-          --no-files \
-          --mongo-uri "{MONGO_URI}" \
-          --mongo-db "{DB_NAME}" \
-          --mongo-coll "{pairs_coll}" \
-          --mongo-drop \
-          --run-id "{model_run}"
-    """
+    """Reload pairs from Mongo into memory."""
     try:
-        print("Running update script...")
-        process = subprocess.run(
-            command, 
-            shell=True, 
-            check=True, 
-            capture_output=True, 
-            text=True,
-            cwd=ROOT  # Run from the project root directory
-        )
-        print(process.stdout)
-        if process.stderr:
-            print(process.stderr, file=sys.stderr)
-
-        # Reload the pairs into memory
         global _PAIRS_CACHE, MANIFEST_JSON
         _PAIRS_CACHE = load_pairs()
-        print(f"[reload] loaded {len(_PAIRS_CACHE)} pairs after Mongo update")
+        print(f"[reload] loaded {len(_PAIRS_CACHE)} pairs after Mongo reload")
 
         return {
             "status": "success",
-            "message": f"Successfully updated pairs. Loaded {len(_PAIRS_CACHE)} new pairs.",
-            "log": process.stdout
+            "message": f"Reloaded pairs from Mongo. Loaded {len(_PAIRS_CACHE)} pairs.",
         }
-    except subprocess.CalledProcessError as e:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": "Failed to run update script.",
-                "stdout": e.stdout,
-                "stderr": e.stderr,
-            },
-        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 app.mount("/static", StaticFiles(directory=Path(__file__).parent.resolve()), name="static")

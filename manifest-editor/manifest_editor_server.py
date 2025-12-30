@@ -53,7 +53,7 @@ if str(PAIRS_VIEWER_ROOT) not in sys.path:
 os.environ.setdefault("MANIFEST_EDITOR_MONGO", REID_MONGO_URI)
 os.environ.setdefault("MANIFEST_EDITOR_DB", MANIFEST_EDITOR_DB)
 
- # noqa: E402
+# noqa: E402
 
 app = FastAPI(root_path=os.path.join(BASE_URL, "manifest-editor"))
 app.add_middleware(
@@ -62,6 +62,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Enable gzip compression for sizable payloads if available
+try:
+    from fastapi.middleware.gzip import GZipMiddleware
+
+    app.add_middleware(GZipMiddleware, minimum_size=500)
+except Exception:  # pragma: no cover
+    logging.warning("GZipMiddleware unavailable; skipping compression setup.")
 
 mongo_client: Optional[MongoClient] = None
 
@@ -132,6 +139,11 @@ def upsert_entries(entries: List[Dict[str, Any]]) -> List[str]:
                 f if f.startswith(("gs://", "http://", "https://")) else BLOB_BASE.rstrip("/") + "/" + f.lstrip("/")
                 for f in files
             ]
+        # Preserve existing embeddings if the incoming doc omits them
+        existing_doc = coll.find_one({"_id": entry_id}, {"embeddings": 1})
+        embeddings = ev.get("embeddings")
+        if embeddings is None and existing_doc and existing_doc.get("embeddings") is not None:
+            embeddings = existing_doc["embeddings"]
         doc = {
             "_id": entry_id,
             "entry_id": entry_id,
@@ -143,7 +155,7 @@ def upsert_entries(entries: List[Dict[str, Any]]) -> List[str]:
             "alert_id": ev.get("alert_id"),
             "files": files,
             "attrs": ev.get("attrs") or ev.get("attr") or {},
-            "embeddings": ev.get("embeddings"),
+            "embeddings": embeddings,
             "employee_id": ev.get("employee_id"),
             "meta": {"saved_at": now},
         }
@@ -242,9 +254,8 @@ def read_manifest_from_mongo(store_id: str, day_id: str, settings: Settings) -> 
                     "images": images, # Original GCS paths for persistence
                     "display_images": display_images, # Resolved HTTP URLs for frontend display
                     "attrs": ev.get("attrs") or ref.get("attrs") or {},
-                    "embeddings": ref.get("embeddings"),
+                    # Do not send embeddings to the browser; resolved on save server-side
                     "employee_id": ref.get("employee_id"),
-                    "embeddings_ref": ev.get("embeddings_ref") or ref.get("embeddings_ref"),
                 }
             )
         people_out.append(
@@ -728,9 +739,6 @@ def manifest_proxy(
                         event.pop("embeddings", None)
                         event.pop("images", None)
                         event.pop("display_images", None)
-                # attrs live on the event? If present, strip them as well
-                for person in mongo_data["people"]:
-                    for event in person.get("events", []):
                         event.pop("attrs", None)
 
             # Add external_door field for data sourced from mongo
@@ -939,6 +947,17 @@ def get_editor_state():
 
 @app.post("/api/editor-state")
 def save_editor_state(payload: Dict[str, Any] = Body(...)):
+    """
+    Persist edited manifest state back to Mongo.
+
+    Writes touch two collections:
+      - entries_coll (one doc per entry_id) via upsert_entries
+      - clusters_coll (one doc per store/day) via upsert_cluster
+
+    The upserts are not wrapped in a transaction, so concurrent saves could
+    overwrite each other. The client always sends the full current state, so
+    last-write wins; we currently have no optimistic locking/versioning.
+    """
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="state payload must be a JSON object")
     if not payload.get("people"):
@@ -951,8 +970,13 @@ def save_editor_state(payload: Dict[str, Any] = Body(...)):
     day_id = payload.get("day_id") or payload.get("day")
     adjudicated = bool(payload.get("adjudicated", False))
     all_entries: List[Dict[str, Any]] = []
+    existing_entries_by_id: Dict[str, Dict[str, Any]] = {}
+    # Prefetch existing entries to preserve embeddings when the client omits them
+    db = get_manifest_editor_db()
+    entries_coll = db[ENTRIES_COLL]
     persons_map: Dict[str, Any] = {}
 
+    entry_ids: List[str] = []
     for person in people:
         pid = person.get("person_id")
         entries = []
@@ -961,6 +985,8 @@ def save_editor_state(payload: Dict[str, Any] = Body(...)):
             ev.setdefault("store_id", store_id)
             ev.setdefault("day_id", day_id)
             all_entries.append(ev)
+            if ev.get("entry_id"):
+                entry_ids.append(ev["entry_id"])
             entries.append(
                 {
                     "entry_id": ev.get("entry_id"),
@@ -980,11 +1006,22 @@ def save_editor_state(payload: Dict[str, Any] = Body(...)):
             "include": not bool(person.get("exclude", False)),
         }
 
+    # Load existing entries for this batch to merge embeddings if absent
+    if entry_ids:
+        for doc in entries_coll.find({"_id": {"$in": entry_ids}}, {"embeddings": 1}):
+            existing_entries_by_id[doc["_id"]] = doc
+
+    # Merge embeddings into outgoing entries payload if the client omitted them
+    for ev in all_entries:
+        eid = ev.get("entry_id")
+        if not eid:
+            continue
+        if ev.get("embeddings") is None:
+            existing = existing_entries_by_id.get(eid)
+            if existing and existing.get("embeddings") is not None:
+                ev["embeddings"] = existing["embeddings"]
+
     if all_entries:
-        if all_entries[0].get("embeddings"):
-            logging.info(f"First entry contains {len(all_entries[0]['embeddings'])} embeddings.")
-        else:
-            logging.info("First entry does NOT contain embeddings.")
         seen_ids = upsert_entries(all_entries)
         # remove stale entries for this store/day
         logging.info(f"Attempting to remove stale entries for store_id={store_id}, day_id={day_id} from MongoDB collection {ENTRIES_COLL}")

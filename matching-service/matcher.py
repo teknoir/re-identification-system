@@ -66,14 +66,14 @@ class ReEntryMatcher:
     def __init__(
         self,
         model_ckpt_path: str,
+        threshold: float,
+        margin: float,
+        topk: int,
         attr_schema_path: Optional[str] = None,
         mongo_uri: Optional[str] = None,
         mongo_db: str = "retail_reid",
         events_collection: str = "line-crossings",
         entries_collection: str = "observations",
-        threshold: float = 0.88,
-        margin: float = 0.02,
-        topk: int = 20,
     ):
         # load model
         ck = torch.load(model_ckpt_path, map_location="cpu")
@@ -97,8 +97,6 @@ class ReEntryMatcher:
             )
 
         self.model.load_state_dict(ck["state_dict"])
-
-        self.model.load_state_dict(ck["state_dict"])
         self.model.eval()
         torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "1")))
         self.dim = ck["emb_dim"]
@@ -111,9 +109,10 @@ class ReEntryMatcher:
             self.mongo = MongoClient(mongo_uri)
             self.db = self.mongo[mongo_db]
 
-        self.threshold = float(os.getenv("THRESHOLD", threshold))
-        self.margin = float(os.getenv("MARGIN", margin))
-        self.topk = int(os.getenv("TOPK", topk))
+        # Use passed-in parameters directly
+        self.threshold = threshold
+        self.margin = margin
+        self.topk = topk
 
         self.by_day_store: Dict[str, Dict[str, DayIndex]] = {}
         self.events_collection = events_collection

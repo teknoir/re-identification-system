@@ -26,7 +26,7 @@ FACES_COLLECTION = os.getenv("FACES_COLLECTION", "faces")
 FUSION_MODE = "xattn"
 # FUSION_MODE = "baseline"
 MARGIN    = float(os.getenv("MARGIN", "0.00"))
-THRESHOLD = float(os.getenv("THRESHOLD", "0.84"))
+THRESHOLD = float(os.getenv("THRESHOLD", "0.9"))
 TOPK      = int(os.getenv("TOPK", "20"))
 
 app = FastAPI(title="Re-entry Matching Service", version="1.0.0")
@@ -46,6 +46,7 @@ matcher = ReEntryMatcher(
     entries_collection=MONGO_ENTRIES_COLLECTION,
     events_collection=MONGO_EVENTS_COLLECTION,
     threshold=THRESHOLD,
+    margin=MARGIN,
     topk=TOPK,
 )
 

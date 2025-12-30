@@ -13,7 +13,7 @@
     .toolbar label { font-size: 13px; display: flex; align-items: center; gap: 6px; }
     select, input { padding: 7px 10px; border: 1px solid #cbd5f5; border-radius: 6px; font-size: 13px; }
     #pairs { display: grid; grid-template-columns: 1fr; gap: 16px; }
-    .pair { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .pair { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; display: grid; grid-template-columns: 1fr; gap: 10px; }
     .pair-info { grid-column: 1 / -1; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; margin-bottom: 10px; }
     .entry { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; background: #fafcff; }
     .entry h3 { margin: 0 0 10px; font-size: 14px; }
@@ -26,12 +26,31 @@
     .risk-hard_pos { color: #166534; }
     .risk-alias_candidate { color: #b45309; }
     #status { margin-left: auto; font-size: 13px; }
+    .header-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+    #header-update-btn { padding: 6px 10px; border: none; border-radius: 6px; background: #334155; color: #fff; cursor: pointer; font-size: 12px; }
+    #header-update-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    #header-update-status { font-size: 12px; color: #cbd5f5; min-width: 120px; }
+    .heatmap { display: inline-block; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+    .heatmap-row { display: flex; }
+    .heatmap-cell { width: 28px; height: 28px; font-size: 10px; display: flex; align-items: center; justify-content: center; color: #0f172a; }
+    .heatmap-legend { font-size: 11px; color: #475569; margin-top: 6px; }
+    table.sim-table { border-collapse: collapse; font-size: 11px; margin-top: 6px; }
+    table.sim-table td, table.sim-table th { border: 1px solid #e2e8f0; padding: 4px; text-align: center; }
+    table.sim-table th { background: #f8fafc; }
+    .sim-summary { font-size: 12px; color: #334155; margin-top: 4px; }
+    .tooltip { text-decoration: underline dotted; cursor: help; }
+    .artifact-flag { font-size: 11px; background: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 999px; margin-left: 8px; }
+    .pair-layout { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: start; }
   </style>
 </head>
 <body>
   <header>
     <h1>High-Risk Pair Viewer</h1>
     <a href="/manifest-editor" style="color: #cbd5f5; text-decoration: none; font-size: 13px;">← Back to Manifest Editor</a>
+    <div class="header-actions">
+      <button id="header-update-btn">Update Pairs</button>
+      <span id="header-update-status"></span>
+    </div>
     <div id="status">Loading...</div>
   </header>
   <main>
@@ -64,8 +83,15 @@
           <option value="store_desc">Store (Z-A)</option>
         </select>
       </label>
-      <button id="update-btn" style="margin-left: auto;">Update Pairs</button>
-      <div id="update-status" style="font-size: 13px; min-width: 150px;"></div>
+      <label>Entries per page:
+        <select id="pageSize">
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+        </select>
+      </label>
     </div>
     <div class="card" style="font-size:13px; color:#334155;">
       <strong>Guidance</strong>
@@ -85,7 +111,7 @@
 
     <script>
         let offset = 0;
-        const limit = 100;
+        let limit = 100;
         const basePath = window.location.pathname.replace(/\/static.*/, '') || '';
         const api = (path) => `${basePath}${path}`;
 
@@ -126,6 +152,9 @@
             if (riskType) url += `&risk_type=${riskType}`;
             if (storeId) url += `&store_id=${storeId}`;
             if (dayId) url += `&day_id=${dayId}`;
+            const pageSize = parseInt(document.getElementById('pageSize').value || '100', 10);
+            limit = pageSize;
+
             if (sortValue.startsWith('ts_')) {
                 url += `&ts_sort=${sortValue}`;
             } else if (sortValue.startsWith('store_')) {
@@ -150,29 +179,38 @@
                 pairs.forEach(pair => {
                     const pairDiv = document.createElement('div');
                     pairDiv.className = 'pair';
+                    const simSummary = renderSimSummary(pair);
                     pairDiv.innerHTML = `
                         <div class="pair-info">
-                            <p><strong>Pair #${pair.idx}</strong> | <strong>Similarity:</strong> ${pair.sim.toFixed(4)} | <strong class="risk-${pair.risk_type}">Risk Type: ${pair.risk_type}</strong> | <strong>Same PID:</strong> ${pair.same_pid}</p>
+                            <p>
+                              <strong>Pair #${pair.idx}</strong> | <strong class="risk-${pair.risk_type}">Risk Type: ${pair.risk_type}</strong> | <strong>Same PID:</strong> ${pair.same_pid} | <strong>Fused sim:</strong> ${pair.sim.toFixed(4)}
+                              ${simSummary}
+                              ${(pair.vis_sim && pair.vis_sim.length) ? '<span class="artifact-flag">vis_sim</span>' : ''}
+                              ${(pair.entry_sims) ? '<span class="artifact-flag">entry_sims</span>' : ''}
+                            </p>
                         </div>
-                        <div class="entry">
-                            <h3>Entry A: ${pair.entry_id_a}</h3>
-                            <p class="meta">PID: ${pair.pid_a}</p>
-                            <p class="meta">Store: ${pair.store_a} | Camera: ${pair.camera_a} | Day: ${pair.day_a}</p>
-                            <p class="meta">Time: ${pair.ts_a}</p>
-                            <div class="image-grid">
-                                ${pair.images_a.map(img_url => `<img src="${img_url}" alt="Entry A Image">`).join('')}
-                            </div>
-                            <button onclick="excludePerson('${pair.store_a}', '${pair.day_a}', '${pair.entry_id_a}', '${pair.pid_a}', '${pair.entry_id_a}', '${pair.entry_id_b}', this.parentNode.parentNode)" style="background-color: #ef4444; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; margin-top: 10px;">Exclude Person A</button>
-                        </div>
-                        <div class="entry">
-                            <h3>Entry B: ${pair.entry_id_b}</h3>
-                            <p class="meta">PID: ${pair.pid_b}</p>
-                            <p class="meta">Store: ${pair.store_b} | Camera: ${pair.camera_b} | Day: ${pair.day_b}</p>
-                            <p class="meta">Time: ${pair.ts_b}</p>
-                            <div class="image-grid">
-                                ${pair.images_b.map(img_url => `<img src="${img_url}" alt="Entry B Image">`).join('')}
-                            </div>
-                            <button onclick="excludePerson('${pair.store_b}', '${pair.day_b}', '${pair.entry_id_b}', '${pair.pid_b}', '${pair.entry_id_a}', '${pair.entry_id_b}', this.parentNode.parentNode)" style="background-color: #ef4444; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; margin-top: 10px;">Exclude Person B</button>
+                        <div class="pair-layout">
+                          <div class="entry">
+                              <h3>Entry A: ${pair.entry_id_a}</h3>
+                              <p class="meta">PID: ${pair.pid_a}</p>
+                              <p class="meta">Store: ${pair.store_a} | Camera: ${pair.camera_a} | Day: ${pair.day_a}</p>
+                              <p class="meta">Time: ${pair.ts_a}</p>
+                              <div class="image-grid">
+                                  ${pair.images_a.map(img_url => `<img src="${img_url}" alt="Entry A Image">`).join('')}
+                              </div>
+                              <button onclick="excludePerson('${pair.store_a}', '${pair.day_a}', '${pair.entry_id_a}', '${pair.pid_a}', '${pair.entry_id_a}', '${pair.entry_id_b}', this.parentNode.parentNode)" style="background-color: #ef4444; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; margin-top: 10px;">Exclude Person A</button>
+                          </div>
+                          <div class="entry">
+                              <h3>Entry B: ${pair.entry_id_b}</h3>
+                              <p class="meta">PID: ${pair.pid_b}</p>
+                              <p class="meta">Store: ${pair.store_b} | Camera: ${pair.camera_b} | Day: ${pair.day_b}</p>
+                              <p class="meta">Time: ${pair.ts_b}</p>
+                              <div class="image-grid">
+                                  ${pair.images_b.map(img_url => `<img src="${img_url}" alt="Entry B Image">`).join('')}
+                              </div>
+                              <button onclick="excludePerson('${pair.store_b}', '${pair.day_b}', '${pair.entry_id_b}', '${pair.pid_b}', '${pair.entry_id_a}', '${pair.entry_id_b}', this.parentNode.parentNode)" style="background-color: #ef4444; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; margin-top: 10px;">Exclude Person B</button>
+                          </div>
+                          ${renderVisSim(pair)}
                         </div>
                     `;
                     const dismissButton = document.createElement('button');
@@ -198,6 +236,53 @@
             pageInfo.textContent = loadedCount > 0 ? `Showing ${start}-${end}` : 'No results';
             document.getElementById('prevPage').disabled = offset === 0;
             document.getElementById('nextPage').disabled = loadedCount < limit;
+        }
+
+        function renderVisSim(pair){
+            if(!pair.vis_sim || !pair.vis_sim.length) return "";
+            const matrix = pair.vis_sim;
+            const stats = pair.vis_sim_stats || {};
+            const min = typeof stats.min === "number" ? stats.min : Math.min(...matrix.flat());
+            const max = typeof stats.max === "number" ? stats.max : Math.max(...matrix.flat());
+            // Build heatmap rows with row labels
+            const rows = matrix.map((row, ri) => {
+                const cells = row.map(v => {
+                    const pct = (v - min) / ((max - min) || 1);
+                    const hue = 240 - (pct * 240); // blue->red
+                    const bg = `hsl(${hue}, 70%, 60%)`;
+                    const txt = v.toFixed(2);
+                    return `<div class="heatmap-cell" style="background:${bg};" title="${v.toFixed(4)}">${txt}</div>`;
+                }).join("");
+                return `<div class="heatmap-row"><div class="heatmap-cell" style="font-weight:bold; background:#f8fafc;">A${ri}</div>${cells}</div>`;
+            }).join("");
+
+            // Column headers
+            const colHeaders = matrix[0].map((_, j) => `<div class="heatmap-cell" style="font-weight:bold; background:#f8fafc;">B${j}</div>`).join("");
+            const headerRow = `<div class="heatmap-row"><div class="heatmap-cell" style="background:#f8fafc;"></div>${colHeaders}</div>`;
+
+            return `
+              <div style="grid-column: 3 / 4; display:flex; flex-direction:column; gap:10px;">
+                <div>
+                  <div class="heatmap">${headerRow}${rows}</div>
+                  <div class="heatmap-legend">vis frame cosine sim (min ${min.toFixed(2)}, max ${max.toFixed(2)})</div>
+                </div>
+              </div>
+            `;
+        }
+
+        function renderSimSummary(pair){
+            const entrySims = pair.entry_sims || {};
+            const fused = entrySims.fused_cosine;
+            const visCos = entrySims.visual_pooled_cosine;
+            const attrCos = entrySims.attr_cosine;
+            const parts = [];
+            if (visCos !== undefined) {
+              parts.push(`<strong class="tooltip" title="Computed now from frame visual embeddings in entry.json using current model/schema.">vis_pooled</strong>: ${visCos.toFixed(4)}`);
+            }
+            if (attrCos !== undefined) {
+              parts.push(`<strong class="tooltip" title="Computed now from attribute embeddings in entry.json using current model/schema.">attr</strong>: ${attrCos.toFixed(4)}`);
+            }
+            return parts.length ? `<span class="sim-summary">${parts.join(" · ")}</span>` : "";
         }
 
         async function excludePerson(storeId, dayId, entryId, personId, entryIdA, entryIdB, pairElement) {
@@ -241,6 +326,10 @@
                 loadPairs();
             });
         });
+        document.getElementById('pageSize').addEventListener('change', () => {
+            offset = 0;
+            loadPairs();
+        });
         document.getElementById('prevPage').addEventListener('click', () => {
             if (offset > 0) {
                 offset -= limit;
@@ -253,43 +342,42 @@
             loadPairs();
         });
 
-        const updateBtn = document.getElementById('update-btn');
-        const updateStatus = document.getElementById('update-status');
+        const headerUpdateBtn = document.getElementById('header-update-btn');
+        const headerUpdateStatus = document.getElementById('header-update-status');
 
         async function updatePairs() {
-            updateBtn.disabled = true;
-            updateStatus.textContent = 'Updating, please wait...';
-            updateStatus.style.color = '#475569';
+            headerUpdateBtn.disabled = true;
+            headerUpdateStatus.textContent = 'Updating...';
+            headerUpdateStatus.style.color = '#cbd5f5';
 
             try {
                 const response = await fetch(api('/update'), { method: 'POST' });
-                const result = await response.json();
-
+                const text = await response.text();
                 if (response.ok) {
-                    updateStatus.textContent = 'Update successful!';
-                    updateStatus.style.color = '#166534';
+                    headerUpdateStatus.textContent = 'Update successful!';
+                    headerUpdateStatus.style.color = '#bbf7d0';
                     // Reset filters and reload everything
                     document.getElementById('riskFilter').value = '';
-                    document.getElementById('storeFilter').innerHTML = '<option value="">All</option>';
-                    document.getElementById('dayFilter').innerHTML = '<option value="">All</option>';
+                    document.getElementById('storeFilter').innerHTML = '<option value=\"\">All</option>';
+                    document.getElementById('dayFilter').innerHTML = '<option value=\"\">All</option>';
                     offset = 0;
                     populateFilters().then(loadPairs);
                 } else {
-                    const errorMsg = result.detail ? (result.detail.message || JSON.stringify(result.detail)) : 'Unknown error';
-                    updateStatus.textContent = `Error: ${errorMsg}`;
-                    updateStatus.style.color = '#b91c1c';
-                    console.error('Update failed:', result.detail);
+                    headerUpdateStatus.textContent = `Error: ${text || response.statusText}`;
+                    headerUpdateStatus.style.color = '#fecdd3';
+                    console.error('Update failed:', text);
                 }
             } catch (error) {
-                updateStatus.textContent = 'Request failed. See console.';
-                updateStatus.style.color = '#b91c1c';
+                headerUpdateStatus.textContent = 'Request failed. See console.';
+                headerUpdateStatus.style.color = '#fecdd3';
                 console.error('Error during update request:', error);
             } finally {
-                updateBtn.disabled = false;
+                headerUpdateBtn.disabled = false;
+                setTimeout(() => { headerUpdateStatus.textContent = ''; }, 2500);
             }
         }
 
-        updateBtn.addEventListener('click', updatePairs);
+        headerUpdateBtn.addEventListener('click', updatePairs);
 
         window.onload = () => {
             populateFilters().then(loadPairs);
