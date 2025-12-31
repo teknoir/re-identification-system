@@ -17,6 +17,7 @@ import numpy as np
 from pymongo import MongoClient
 from metric_model import EntryEncoder, CrossAttentionEntryEncoder
 from data_utils import load_attr_schema, vec_from_schema, l2norm_np
+from frame_filter import filter_frames
 import json
 from pathlib import Path
 import logging
@@ -174,7 +175,36 @@ class ReEntryMatcher:
         return day[store_id]
 
     def encode_entry(self, embeddings: List[List[float]], attrs: Optional[Dict[str, Any]] = None) -> np.ndarray:
-        V = np.stack([l2norm_np(np.asarray(v, np.float32).reshape(-1)) for v in embeddings], axis=0)  # (N,Dv)
+        if not embeddings:
+            return np.zeros((self.dim,), dtype=np.float32)
+
+        # 1. Build (N, D) numpy array
+        vis_np = np.asarray(embeddings, dtype=np.float32)
+        if vis_np.ndim == 1:
+            vis_np = vis_np.reshape(1, -1)
+        else:
+            vis_np = vis_np.reshape(vis_np.shape[0], -1)
+
+        # 2. L2-normalize
+        vis_np = l2norm_np(vis_np)
+
+        # 3. Call filter_frames
+        filtered = filter_frames(vis_np)
+        if isinstance(filtered, tuple):
+            vis_np_filt, _ = filtered
+        else:
+            vis_np_filt = filtered
+
+        # Fallback if filtering removed all frames
+        if vis_np_filt.shape[0] == 0:
+            vis_np_filt = vis_np
+
+        orig_n = vis_np.shape[0]
+        filt_n = vis_np_filt.shape[0]
+        if orig_n != filt_n:
+            logging.info(f"encode_entry: filtered {orig_n} → {filt_n} frames")
+
+        V = vis_np_filt
         avec = vec_from_schema(attrs or {}, self.attr_schema) if self.attr_schema else np.zeros((0,), np.float32)
 
         with torch.no_grad():

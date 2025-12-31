@@ -26,7 +26,8 @@ FACES_COLLECTION = os.getenv("FACES_COLLECTION", "faces")
 FUSION_MODE = "xattn"
 # FUSION_MODE = "baseline"
 MARGIN    = float(os.getenv("MARGIN", "0.00"))
-THRESHOLD = float(os.getenv("THRESHOLD", "0.9"))
+# YOU MUST UPDATE THE PARAMS in frame_filter.py to match the chosen model run
+THRESHOLD = float(os.getenv("THRESHOLD", "0.86"))
 TOPK      = int(os.getenv("TOPK", "20"))
 
 app = FastAPI(title="Re-entry Matching Service", version="1.0.0")
