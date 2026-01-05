@@ -52,6 +52,3 @@ def vec_from_schema(attrs: Dict[str, Any], schema: Dict[str, Any]) -> np.ndarray
             vec.append(np.array([0.0], dtype=np.float32))
     return np.concatenate(vec, axis=0).astype(np.float32) if vec else np.zeros((0,), dtype=np.float32)
 
-def l2norm_np(x: np.ndarray) -> np.ndarray:
-    n = float(np.linalg.norm(x) + 1e-12)
-    return x / n

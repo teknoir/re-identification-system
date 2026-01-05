@@ -29,6 +29,7 @@ MARGIN    = float(os.getenv("MARGIN", "0.00"))
 # YOU MUST UPDATE THE PARAMS in frame_filter.py to match the chosen model run
 THRESHOLD = float(os.getenv("THRESHOLD", "0.86"))
 TOPK      = int(os.getenv("TOPK", "20"))
+EMPTY_AFTER_FILTER_POLICY = os.getenv("EMPTY_AFTER_FILTER_POLICY", "skip")
 
 app = FastAPI(title="Re-entry Matching Service", version="1.0.0")
 
@@ -49,6 +50,7 @@ matcher = ReEntryMatcher(
     threshold=THRESHOLD,
     margin=MARGIN,
     topk=TOPK,
+    empty_after_filter_policy=EMPTY_AFTER_FILTER_POLICY,
 )
 
 faces_client: Optional[MongoClient] = None
@@ -79,7 +81,15 @@ class RebuildRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "threshold": matcher.threshold, "topk": matcher.topk}
+    stats = matcher.get_stats()
+    return {
+        "ok": True,
+        "threshold": matcher.threshold,
+        "margin": matcher.margin,
+        "topk": matcher.topk,
+        "empty_after_filter_policy": matcher.empty_after_filter_policy,
+        **stats,
+    }
 
 @app.post("/match")
 def match(req: MatchRequest):

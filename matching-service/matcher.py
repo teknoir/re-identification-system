@@ -1,6 +1,6 @@
 # matcher.py
 from __future__ import annotations
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Tuple, Optional, List, Union
 import os
 from datetime import datetime, timedelta
 
@@ -16,8 +16,8 @@ import faiss
 import numpy as np
 from pymongo import MongoClient
 from metric_model import EntryEncoder, CrossAttentionEntryEncoder
-from data_utils import load_attr_schema, vec_from_schema, l2norm_np
-from frame_filter import filter_frames
+from data_utils import load_attr_schema, vec_from_schema
+from frame_filter import filter_frames, l2norm_np
 import json
 from pathlib import Path
 import logging
@@ -70,6 +70,7 @@ class ReEntryMatcher:
         threshold: float,
         margin: float,
         topk: int,
+        empty_after_filter_policy: str = "skip",
         attr_schema_path: Optional[str] = None,
         mongo_uri: Optional[str] = None,
         mongo_db: str = "retail_reid",
@@ -115,12 +116,38 @@ class ReEntryMatcher:
         self.margin = margin
         self.topk = topk
 
+        # How to handle entries where frame filtering drops everything
+        # - 'skip': do not match and do not index (training-aligned; safest for FP control)
+        # - 'fallback': use unfiltered frames (legacy behavior; can increase FPs)
+        self.empty_after_filter_policy = (empty_after_filter_policy or "skip").strip().lower()
+        if self.empty_after_filter_policy not in ("skip", "fallback"):
+            logging.warning(
+                "Unknown empty_after_filter_policy=%r; defaulting to 'skip'",
+                self.empty_after_filter_policy,
+            )
+            self.empty_after_filter_policy = "skip"
+
+        # Metrics
+        self.total_processed = 0
+        self.total_empty_after_filter = 0
+
         self.by_day_store: Dict[str, Dict[str, DayIndex]] = {}
         self.events_collection = events_collection
         self.entries_collection = entries_collection
 
         self.cache_dir = Path("matching-service/cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Return runtime metrics."""
+        perc = 0.0
+        if self.total_processed > 0:
+            perc = (self.total_empty_after_filter / self.total_processed) * 100.0
+        return {
+            "total_processed": self.total_processed,
+            "total_empty_after_filter": self.total_empty_after_filter,
+            "empty_after_filter_percent": round(perc, 2),
+        }
 
     def get_entry_count(self, day_id: str, store_id: str) -> int:
         if self.db is None:
@@ -174,45 +201,108 @@ class ReEntryMatcher:
             day[store_id] = DayIndex(self.dim)
         return day[store_id]
 
-    def encode_entry(self, embeddings: List[List[float]], attrs: Optional[Dict[str, Any]] = None) -> np.ndarray:
-        if not embeddings:
-            return np.zeros((self.dim,), dtype=np.float32)
+    def encode_entry(
+        self,
+        embeddings: List[List[float]],
+        attrs: Optional[Dict[str, Any]] = None,
+        *,
+        return_info: bool = False,
+    ) -> Union[np.ndarray, Tuple[np.ndarray, Dict[str, Any]]]:
+        """
+        Encode a single entry into the fused embedding space.
 
-        # 1. Build (N, D) numpy array
+        Note on training/runtime parity:
+          - Training skips entries that become empty after frame filtering.
+          - Runtime historically fell back to unfiltered frames (which can create FPs).
+        This function supports both via `self.empty_after_filter_policy`.
+        """
+        info: Dict[str, Any] = {
+            "orig_frames": 0,
+            "filtered_frames": 0,
+            "frames_used": 0,
+            "kept_indices": [],
+            "empty_after_filter": False,
+            "empty_policy": self.empty_after_filter_policy,
+            "used_unfiltered_fallback": False,
+            "skip_match_and_index": False,
+        }
+
+        if not embeddings:
+            z0 = np.zeros((self.dim,), dtype=np.float32)
+            info.update(
+                {
+                    "empty_after_filter": True,
+                    "skip_match_and_index": True,
+                    "reason": "no_embeddings",
+                }
+            )
+            return (z0, info) if return_info else z0
+
+        # 1) Build (N, D) numpy array
         vis_np = np.asarray(embeddings, dtype=np.float32)
         if vis_np.ndim == 1:
             vis_np = vis_np.reshape(1, -1)
         else:
             vis_np = vis_np.reshape(vis_np.shape[0], -1)
 
-        # 2. L2-normalize
+        info["orig_frames"] = int(vis_np.shape[0])
+
+        # 2) (Legacy) L2-normalize. Note: filter_frames() also normalizes per-frame.
+        # Keeping this for now to minimize behavior changes in the non-empty path.
         vis_np = l2norm_np(vis_np)
 
-        # 3. Call filter_frames
+        # 3) Frame filtering (returns (M, D), kept_indices)
         filtered = filter_frames(vis_np)
         if isinstance(filtered, tuple):
-            vis_np_filt, _ = filtered
+            vis_np_filt, kept_idx = filtered
         else:
             vis_np_filt = filtered
+            kept_idx = None
 
-        # Fallback if filtering removed all frames
-        if vis_np_filt.shape[0] == 0:
-            vis_np_filt = vis_np
+        vis_np_filt = np.asarray(vis_np_filt, dtype=np.float32)
+        filt_n = int(vis_np_filt.shape[0])
+        info["filtered_frames"] = filt_n
+        info["kept_indices"] = kept_idx.tolist() if kept_idx is not None else []
 
-        orig_n = vis_np.shape[0]
-        filt_n = vis_np_filt.shape[0]
-        if orig_n != filt_n:
-            logging.info(f"encode_entry: filtered {orig_n} → {filt_n} frames")
+        # 4) Empty-after-filter handling
+        if filt_n == 0:
+            info["empty_after_filter"] = True
 
-        V = vis_np_filt
+            if self.empty_after_filter_policy == "fallback":
+                # Legacy behavior (NOT recommended): keep all original frames.
+                # IMPORTANT: do proper *per-row* normalization here.
+                info["used_unfiltered_fallback"] = True
+                V = np.asarray(vis_np, dtype=np.float32)
+                row_norm = np.linalg.norm(V, axis=-1, keepdims=True)
+                V = V / np.clip(row_norm, 1e-12, None)
+                info["frames_used"] = int(V.shape[0])
+            else:
+                # Training-aligned (recommended): treat as unmatchable and do not index.
+                info["skip_match_and_index"] = True
+                info["frames_used"] = 0
+                z0 = np.zeros((self.dim,), dtype=np.float32)
+                return (z0, info) if return_info else z0
+        else:
+            V = vis_np_filt
+            info["frames_used"] = filt_n
+
+        orig_n = int(info["orig_frames"])
+        used_n = int(info["frames_used"])
+        if orig_n != used_n:
+            logging.info(f"encode_entry: filtered {orig_n} → {used_n} frames")
+
+        # 5) Attr vector
         avec = vec_from_schema(attrs or {}, self.attr_schema) if self.attr_schema else np.zeros((0,), np.float32)
 
+        # 6) Model forward
         with torch.no_grad():
             vis_t = torch.from_numpy(V).unsqueeze(0).float()
             mask = torch.ones((1, V.shape[0]), dtype=torch.bool)
-            attr_t = torch.from_numpy(avec).unsqueeze(0).float() if avec.size>0 else None
+            attr_t = torch.from_numpy(avec).unsqueeze(0).float() if avec.size > 0 else None
             z = self.model(vis_t, attr_t, mask=mask).squeeze(0).cpu().numpy()
-        return l2norm_np(z.astype(np.float32))
+
+        z = l2norm_np(z.astype(np.float32))
+        return (z, info) if return_info else z
 
     def query_then_add(
         self,
@@ -236,7 +326,61 @@ class ReEntryMatcher:
 
         resolved_store = store_id or self._store_from_entry(entry_id)
 
-        # Check if index is in memory, if not, try to load from cache or rebuild
+        self.total_processed += 1
+
+        # Encode FIRST so we can early-exit on low-quality entries without rebuilding/loading FAISS.
+        z, enc_info = self.encode_entry(embeddings or [], attrs, return_info=True)
+
+        # Base decision
+        decision: Dict[str, Any] = {
+            "status": "new",
+            "match_id": None,
+            "score": None,
+            "score2": None,
+            # Useful for debugging parity / production tails
+            "frame_filter": enc_info,
+        }
+
+        # Training skips entries that become empty after filtering; runtime should not try to match/index them.
+        if enc_info.get("skip_match_and_index"):
+            self.total_empty_after_filter += 1
+            decision["reason"] = enc_info.get("reason") or "empty_after_filter"
+
+            logging.info(
+                "EMPTY_AFTER_FILTER entry=%s store=%s day=%s orig_frames=%s filtered_frames=%s policy=%s",
+                entry_id,
+                resolved_store,
+                day_id,
+                enc_info.get("orig_frames"),
+                enc_info.get("filtered_frames"),
+                enc_info.get("empty_policy"),
+            )
+
+            # optional persistence (raw inputs)
+            if persist and self.db is not None:
+                doc = {
+                    "_id": entry_id,
+                    "day_id": day_id,  # Use the calculated day_id
+                    "store_id": resolved_store,
+                    "alert_id": alert_id,
+                    "timestamp": timestamp,
+                    "direction": direction,
+                    "camera": camera,
+                    "images": image_uris or [],
+                    "vis": {
+                        "per_image_dim": len(embeddings[0]) if embeddings else 0,
+                        "embeddings": embeddings,
+                        "filter": enc_info,
+                    },
+                    "attrs": attrs or {},
+                }
+                if employee_id:
+                    doc["employee_id"] = employee_id
+                self.db[self.entries_collection].replace_one({"_id": entry_id}, doc, upsert=True)
+
+            return decision
+
+        # --- FAISS bucket setup (only needed when we actually try to match/index) ---
         if self.by_day_store.get(day_id, {}).get(resolved_store):
             logging.info(f"Using in-memory index for day {day_id}, store {resolved_store}.")
         elif not self.load_from_cache(day_id, resolved_store):
@@ -244,14 +388,12 @@ class ReEntryMatcher:
 
         idx = self.ensure_day_store(day_id, resolved_store)
 
-        z = self.encode_entry(embeddings, attrs)
-
         # query before add (avoid matching ourselves)
-        decision = {"status": "new", "match_id": None, "score": None, "score2": None}
         if idx.index.ntotal > 0:
             K = topk or self.topk
             sims, nn_idx, ids = idx.search(z, K)
-            nn1 = float(sims[0]); nn2 = float(sims[1]) if len(sims) > 1 else -1.0
+            nn1 = float(sims[0])
+            nn2 = float(sims[1]) if len(sims) > 1 else -1.0
             id1 = ids[int(nn_idx[0])]
             is_match = (nn1 >= self.threshold) and ((nn1 - nn2) >= self.margin)
             if is_match:
@@ -275,7 +417,11 @@ class ReEntryMatcher:
                 "direction": direction,
                 "camera": camera,
                 "images": image_uris or [],
-                "vis": {"per_image_dim": len(embeddings[0]) if embeddings else 0, "embeddings": embeddings},
+                "vis": {
+                    "per_image_dim": len(embeddings[0]) if embeddings else 0,
+                    "embeddings": embeddings,
+                    "filter": enc_info,
+                },
                 "attrs": attrs or {},
             }
             if employee_id:
@@ -289,9 +435,14 @@ class ReEntryMatcher:
         if self.db is None:
             return {"ok": False, "error": "Mongo not configured"}
         self.by_day_store[day_id] = {}
-        cur = self.db[self.entries_collection].find({"day_id": day_id}, {"_id": 1, "store_id": 1, "vis.embeddings": 1, "attrs": 1, "images": 1})
+        cur = self.db[self.entries_collection].find(
+            {"day_id": day_id},
+            {"_id": 1, "store_id": 1, "vis.embeddings": 1, "attrs": 1, "images": 1},
+        )
         cnt = 0
+        skipped_empty = 0
         stores_rebuilt = set()
+
         for doc in cur:
             eid = doc["_id"]
             store = doc.get("store_id") or self._store_from_entry(eid)
@@ -301,14 +452,19 @@ class ReEntryMatcher:
             attrs = doc.get("attrs") or {}
             if not embs:
                 continue
-            z = self.encode_entry(embs, attrs)
+
+            z, enc_info = self.encode_entry(embs, attrs, return_info=True)
+            if enc_info.get("skip_match_and_index"):
+                skipped_empty += 1
+                continue
+
             idx.add(z, eid)
             cnt += 1
-        
+
         for store_id in stores_rebuilt:
             self.save_to_cache(day_id, store_id)
-            
-        return {"ok": True, "count": cnt}
+
+        return {"ok": True, "count": cnt, "skipped_empty_after_filter": skipped_empty}
 
     @staticmethod
     def _ts_key(value: Optional[str]) -> datetime:
@@ -418,12 +574,16 @@ class ReEntryMatcher:
         assignments: List[int] = []
         people: List[Dict[str, Any]] = []
 
+
         for rec in records:
-            vec = self.encode_entry(rec["embeddings"], rec["attrs"])
+            vec, enc_info = self.encode_entry(rec["embeddings"], rec["attrs"], return_info=True)
+
             cluster_idx = None
             nn1 = None
             nn2 = None
-            if temp_index.ntotal > 0:
+
+            # Only attempt to match/index if the entry is matchable.
+            if (not enc_info.get("skip_match_and_index")) and temp_index.ntotal > 0:
                 K = min(temp_index.ntotal, max(2, self.topk))
                 sims, idxs = temp_index.search(vec.reshape(1, -1).astype(np.float32), K)
                 nn1 = float(sims[0][0])
@@ -431,12 +591,24 @@ class ReEntryMatcher:
                 is_match = (nn1 >= self.threshold) and ((nn1 - nn2) >= self.margin)
                 if is_match:
                     cluster_idx = assignments[int(idxs[0][0])]
+
             if cluster_idx is None:
                 cluster_idx = len(people)
                 first_seen = rec["timestamp"]
                 people.append(
                     {"person_id": f"{store_id}-{cluster_idx+1:04d}", "first_seen": first_seen, "events": []}
                 )
+
+            # Attach a minimal filter summary for debugging
+            frame_filter_summary = {
+                "orig_frames": enc_info.get("orig_frames"),
+                "filtered_frames": enc_info.get("filtered_frames"),
+                "frames_used": enc_info.get("frames_used"),
+                "empty_after_filter": enc_info.get("empty_after_filter"),
+                "empty_policy": enc_info.get("empty_policy"),
+                "used_unfiltered_fallback": enc_info.get("used_unfiltered_fallback"),
+            }
+
             people[cluster_idx]["events"].append(
                 {
                     "entry_id": rec["entry_id"],
@@ -450,16 +622,21 @@ class ReEntryMatcher:
                     "score2": nn2,
                     "attrs": rec["attrs"],
                     "embeddings": rec["embeddings"],
+                    "frame_filter": frame_filter_summary,
                 }
             )
+
             if rec["timestamp"]:
                 if (
                     people[cluster_idx]["first_seen"] is None
                     or self._ts_key(rec["timestamp"]) < self._ts_key(people[cluster_idx]["first_seen"])
                 ):
                     people[cluster_idx]["first_seen"] = rec["timestamp"]
-            temp_index.add(vec.reshape(1, -1).astype(np.float32))
-            assignments.append(cluster_idx)
+
+            # Only index matchable entries (avoid poisoning the candidate set with low-quality events)
+            if not enc_info.get("skip_match_and_index"):
+                temp_index.add(vec.reshape(1, -1).astype(np.float32))
+                assignments.append(cluster_idx)
 
         if entry_id:
             people = [p for p in people if any(ev["entry_id"] == entry_id for ev in p["events"])]
@@ -541,11 +718,31 @@ class ReEntryMatcher:
             raise ValueError("missing embeddings for comparison")
         attrs_a = doc_a.get("attrs") or {}
         attrs_b = doc_b.get("attrs") or {}
-        vec_a = self.encode_entry(embs_a, attrs_a)
-        vec_b = self.encode_entry(embs_b, attrs_b)
+
+        vec_a, info_a = self.encode_entry(embs_a, attrs_a, return_info=True)
+        vec_b, info_b = self.encode_entry(embs_b, attrs_b, return_info=True)
         score = float(np.dot(vec_a, vec_b))
+
         return {
             "score": score,
+            "frame_filter_a": {
+                "orig_frames": info_a.get("orig_frames"),
+                "filtered_frames": info_a.get("filtered_frames"),
+                "frames_used": info_a.get("frames_used"),
+                "empty_after_filter": info_a.get("empty_after_filter"),
+                "empty_policy": info_a.get("empty_policy"),
+                "used_unfiltered_fallback": info_a.get("used_unfiltered_fallback"),
+                "skip_match_and_index": info_a.get("skip_match_and_index"),
+            },
+            "frame_filter_b": {
+                "orig_frames": info_b.get("orig_frames"),
+                "filtered_frames": info_b.get("filtered_frames"),
+                "frames_used": info_b.get("frames_used"),
+                "empty_after_filter": info_b.get("empty_after_filter"),
+                "empty_policy": info_b.get("empty_policy"),
+                "used_unfiltered_fallback": info_b.get("used_unfiltered_fallback"),
+                "skip_match_and_index": info_b.get("skip_match_and_index"),
+            },
             "entry_a": self._doc_to_event(doc_a),
             "entry_b": self._doc_to_event(doc_b),
         }
