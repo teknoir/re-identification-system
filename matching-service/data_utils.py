@@ -7,6 +7,7 @@ os.environ.setdefault("NUMPY_SKIP_MAC_OS_CHECK", "1")
 import numpy as np
 import json
 from pathlib import Path
+from frame_filter import l2norm_np
 
 def load_attr_schema(path: str | Path) -> Dict[str, Any]:
     return json.loads(Path(path).read_text())

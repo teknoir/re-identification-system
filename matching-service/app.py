@@ -149,6 +149,14 @@ def match(req: MatchRequest):
             logging.warning("failed to fetch employee_id from match %s: %s", out.get("match_id"), exc)
 
     # runtime rule is applied inside query_then_add (single-threshold cosine match)
+    match_decision = {
+        "status": out.get("status"),
+        "match_id": out.get("match_id"),
+        "score": out.get("score"),
+        "score2": out.get("score2"),
+        "frame_filter": out.get("frame_filter"),
+        "reason": out.get("reason"),
+    }
     return {
         "ok": True,
         "images": req.images or [],
@@ -157,6 +165,7 @@ def match(req: MatchRequest):
         "direction": req.direction,
         "camera": req.camera,
         "employee_id": employee_id,
+        "match_decision": match_decision,
         **out,
     }
 

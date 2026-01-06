@@ -8,6 +8,7 @@ os.environ.setdefault("NUMPY_SKIP_MAC_OS_CHECK", "1")
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("KMP_INIT_AT_FORK", "FALSE")
 os.environ.setdefault("OMP_NUM_THREADS", os.environ.get("OMP_NUM_THREADS", "1"))
+os.environ.setdefault("LOG_MATCH_DECISIONS", "1")
 fusion_mode ="xattn"
 
 
@@ -392,13 +393,54 @@ class ReEntryMatcher:
         if idx.index.ntotal > 0:
             K = topk or self.topk
             sims, nn_idx, ids = idx.search(z, K)
-            nn1 = float(sims[0])
-            nn2 = float(sims[1]) if len(sims) > 1 else -1.0
-            id1 = ids[int(nn_idx[0])]
-            is_match = (nn1 >= self.threshold) and ((nn1 - nn2) >= self.margin)
-            if is_match:
+            # NOTE: FAISS pads results with -1 indices when K > ntotal.
+            # Be defensive to avoid accidentally indexing ids[-1].
+            n_total = int(idx.index.ntotal)
+
+            nn1 = float(sims[0]) if len(sims) > 0 else -1.0
+            nn2 = float(sims[1]) if (n_total > 1 and len(sims) > 1) else -1.0
+
+            nn_i1 = int(nn_idx[0]) if len(nn_idx) > 0 else -1
+            nn_i2 = int(nn_idx[1]) if len(nn_idx) > 1 else -1
+
+            id1 = ids[nn_i1] if (0 <= nn_i1 < len(ids)) else None
+            id2 = ids[nn_i2] if (0 <= nn_i2 < len(ids)) else None
+
+            gap = nn1 - nn2
+            is_match = (nn1 >= self.threshold) and (gap >= self.margin)
+            if is_match and id1 is not None:
                 decision.update({"status": "match", "match_id": id1})
             decision.update({"score": nn1, "score2": nn2})
+
+            # Similarity logging (essential for debugging prod behavior)
+            # Default: log all MATCH decisions at INFO and borderlines near threshold.
+            try:
+                log_all = os.environ.get("LOG_MATCH_DECISIONS", "0").lower() in ("1", "true", "yes")
+            except Exception:
+                log_all = False
+
+            should_log = log_all or (decision["status"] == "match") or (nn1 >= (self.threshold - 0.05))
+            if should_log:
+                ff = decision.get("frame_filter") or {}
+                logging.info(
+                    "MATCH_DECISION entry=%s store=%s day=%s status=%s nn1=%.4f nn2=%.4f gap=%.4f "
+                    "thr=%.3f margin=%.3f topk=%d ntotal=%d match_id=%s nn2_id=%s orig_frames=%s frames_used=%s",
+                    entry_id,
+                    resolved_store,
+                    day_id,
+                    decision["status"],
+                    nn1,
+                    nn2,
+                    gap,
+                    self.threshold,
+                    self.margin,
+                    int(K),
+                    n_total,
+                    decision.get("match_id"),
+                    id2,
+                    ff.get("orig_frames"),
+                    ff.get("frames_used"),
+                )
 
         # add to FAISS
         idx.add(z, entry_id)
@@ -572,6 +614,7 @@ class ReEntryMatcher:
 
         temp_index = faiss.IndexFlatIP(self.dim)
         assignments: List[int] = []
+        added_ids: List[str] = []
         people: List[Dict[str, Any]] = []
 
 
@@ -581,6 +624,7 @@ class ReEntryMatcher:
             cluster_idx = None
             nn1 = None
             nn2 = None
+            match_id = None
 
             # Only attempt to match/index if the entry is matchable.
             if (not enc_info.get("skip_match_and_index")) and temp_index.ntotal > 0:
@@ -590,7 +634,9 @@ class ReEntryMatcher:
                 nn2 = float(sims[0][1]) if K > 1 else -1.0
                 is_match = (nn1 >= self.threshold) and ((nn1 - nn2) >= self.margin)
                 if is_match:
-                    cluster_idx = assignments[int(idxs[0][0])]
+                    hit_idx = int(idxs[0][0])
+                    cluster_idx = assignments[hit_idx]
+                    match_id = added_ids[hit_idx]
 
             if cluster_idx is None:
                 cluster_idx = len(people)
@@ -623,6 +669,13 @@ class ReEntryMatcher:
                     "attrs": rec["attrs"],
                     "embeddings": rec["embeddings"],
                     "frame_filter": frame_filter_summary,
+                    "match_decision": {
+                        "status": "match" if match_id else ("skip" if enc_info.get("skip_match_and_index") else "new"),
+                        "match_id": match_id,
+                        "score": nn1,
+                        "score2": nn2,
+                        "frame_filter": frame_filter_summary,
+                    },
                 }
             )
 
@@ -637,6 +690,7 @@ class ReEntryMatcher:
             if not enc_info.get("skip_match_and_index"):
                 temp_index.add(vec.reshape(1, -1).astype(np.float32))
                 assignments.append(cluster_idx)
+                added_ids.append(rec["entry_id"])
 
         if entry_id:
             people = [p for p in people if any(ev["entry_id"] == entry_id for ev in p["events"])]
