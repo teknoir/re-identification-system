@@ -157,6 +157,18 @@ def match(req: MatchRequest):
         "frame_filter": out.get("frame_filter"),
         "reason": out.get("reason"),
     }
+    logging.info(
+        "MATCH_DECISION entry=%s store=%s day=%s status=%s nn1=%.4f nn2=%.4f match_id=%s reason=%s frames=%s",
+        req.entry_id,
+        req.store_id,
+        req.day_id,
+        match_decision.get("status"),
+        match_decision.get("score") or -1.0,
+        match_decision.get("score2") or -1.0,
+        match_decision.get("match_id"),
+        match_decision.get("reason"),
+        match_decision.get("frame_filter"),
+    )
     return {
         "ok": True,
         "images": req.images or [],
@@ -184,6 +196,27 @@ def manifest(day_id: str, store_id: str, entry_id: Optional[str] = None, camera:
             data = matcher.build_employee_manifest(day_id, store_id, emp_id)
         else:
             data = matcher.build_manifest(day_id, store_id, entry_id, camera)
+        # Log all match_decisions for visibility
+        try:
+            for person in data.get("people", []):
+                for ev in person.get("events", []):
+                    md = ev.get("match_decision")
+                    if not md:
+                        continue
+                    logging.info(
+                        "MANIFEST_DECISION entry=%s store=%s day=%s status=%s nn1=%s nn2=%s match_id=%s reason=%s frames=%s",
+                        ev.get("entry_id"),
+                        store_id,
+                        day_id,
+                        md.get("status"),
+                        md.get("score"),
+                        md.get("score2"),
+                        md.get("match_id"),
+                        md.get("reason"),
+                        md.get("frame_filter"),
+                    )
+        except Exception:
+            pass
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if BUCKET_PREFIX:
