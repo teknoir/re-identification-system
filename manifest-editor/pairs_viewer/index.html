@@ -46,7 +46,7 @@
 <body>
   <header>
     <h1>High-Risk Pair Viewer</h1>
-    <a href="/manifest-editor" style="color: #cbd5f5; text-decoration: none; font-size: 13px;">← Back to Manifest Editor</a>
+    <a id="back-link" href="/manifest-editor" style="color: #cbd5f5; text-decoration: none; font-size: 13px;">← Back to Manifest Editor</a>
     <div class="header-actions">
       <button id="header-update-btn">Update Pairs</button>
       <span id="header-update-status"></span>
@@ -57,10 +57,9 @@
     <div class="card toolbar">
       <label>Filter by Risk:
         <select id="riskFilter">
-          <option value="">All</option>
+          <option value="alias_candidate" selected>Alias Candidates</option>
           <option value="hard_neg">Hard Negatives</option>
           <option value="hard_pos">Hard Positives</option>
-          <option value="alias_candidate">Alias Candidates</option>
         </select>
       </label>
       <label>Filter by Store:
@@ -114,6 +113,17 @@
         let limit = 100;
         const basePath = window.location.pathname.replace(/\/static.*/, '') || '';
         const api = (path) => `${basePath}${path}`;
+
+        // Adjust back link for prod vs local
+        (function() {
+          const link = document.getElementById("back-link");
+          if (!link) return;
+          let target = "/manifest-editor";
+          if (window.location.hostname.includes("teknoir.cloud")) {
+            target = "https://teknoir.cloud/victra-poc/re-identification-system/manifest-editor";
+          }
+          link.href = target;
+        })();
 
         async function populateFilters() {
             try {
