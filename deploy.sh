@@ -113,4 +113,7 @@ spec:
         - stream: cloud-line-crossing
         - stream: cloud-person-cutout
         - stream: cloud-person-re-id
+        - stream: cloud-face-cover
+        - stream: cloud-employee-loitering
+
 EOF
