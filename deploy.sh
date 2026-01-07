@@ -106,7 +106,7 @@ spec:
         serviceAccountName: default-editor
         image:
           repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
-          tag: feature-person-re-id-cloud-stream-cdef55d
+          tag: feature-person-re-id-cloud-streamss-7b6e728
         reId:
           visualAttrModelName: projects/815276040543/locations/us-central1/endpoints/1385445124137287680
       streams:
