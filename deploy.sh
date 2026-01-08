@@ -77,14 +77,14 @@ spec:
     triton:
       resources:
         limits:
-          cpu: 2000m
+          cpu: 4000m
           memory: 8Gi
       models:
         - name: swin-reid
           # Vanilla model from Nvidia:
           #image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-local-20251112-104202
-          # Felixes new retrained model:
-          image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-retrained-20251209-074308
+          # Felixes new retrained model v2:
+          image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-local-20260108-124622
 
     event-processing-pipeline:
       defaults:
