@@ -57,7 +57,7 @@ metadata:
 spec:
   repo: https://teknoir.github.io/re-identification-system
   chart: re-identification-system
-  version: 0.0.12
+  version: 0.0.13
   targetNamespace: ${NAMESPACE}
   valuesContent: |-
     basePath: /${NAMESPACE}/re-identification-system
@@ -87,32 +87,20 @@ spec:
           image: us-docker.pkg.dev/teknoir/gcr.io/swin-reid-triton:latest-retrained-20251209-074308
 
     event-processing-pipeline:
-      #streams:
-      #  - stream: cloud-line-crossing
-      #    #debugLevel: DEBUG
-      #    domain: ${DOMAIN}
-      #    image:
-      #      repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
-      #      tag: feature-line-crossing-cloud-stream-d8f48ba
-      #    serviceAccountName: default-editor
-      #    reId:
-      #      matchingServiceURL: http://matching-service/match
-      #      visualAttrPromptName: reid-visual-attributes
-      #      visualAttrResponseModel: reid_visual_attribute_classifier
-      #      visualAttrModelName: projects/815276040543/locations/us-central1/endpoints/1385445124137287680
       defaults:
         #debugLevel: DEBUG
         domain: ${DOMAIN}
         serviceAccountName: default-editor
         image:
           repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
-          tag: feature-person-re-id-cloud-streamss-7b6e728
+          tag: feature-person-re-id-cloud-streamss-5dc5546
         reId:
           visualAttrModelName: projects/815276040543/locations/us-central1/endpoints/1385445124137287680
       streams:
         - stream: cloud-line-crossing
         - stream: cloud-person-cutout
         - stream: cloud-person-re-id
+          enablePromMetricsScraping: true
         - stream: cloud-face-cover
         - stream: cloud-employee-loitering
 
