@@ -97,14 +97,15 @@ spec:
         serviceAccountName: default-editor
         image:
           repository: us-docker.pkg.dev/teknoir/gcr.io/observatory-event-processing
-          tag: feature-person-re-id-cloud-streamss-22f9fa0
+          tag: feature-person-re-id-cloud-streamss-2a30295
         reId:
           visualAttrModelName: projects/815276040543/locations/us-central1/endpoints/1385445124137287680
       streams:
         - stream: cloud-line-crossing
         - stream: cloud-person-cutout
         - stream: cloud-person-re-id
-          disableMatching: true
+          reId:
+            disableMatching: true
           enablePromMetricsScraping: true
         - stream: cloud-face-cover
         - stream: cloud-employee-loitering
