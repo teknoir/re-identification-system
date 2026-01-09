@@ -102,6 +102,8 @@ spec:
           visualAttrModelName: projects/815276040543/locations/us-central1/endpoints/1385445124137287680
       streams:
         - stream: cloud-line-crossing
+          image:
+            tag: feature-line-crossing-cloud-stream-73de241
         - stream: cloud-person-cutout
         - stream: cloud-person-re-id
           reId:
@@ -109,5 +111,7 @@ spec:
           enablePromMetricsScraping: true
         - stream: cloud-face-cover
         - stream: cloud-employee-loitering
+          image:
+            tag: feature-line-crossing-cloud-stream-73de241
 
 EOF
