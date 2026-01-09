@@ -57,7 +57,7 @@ metadata:
 spec:
   repo: https://teknoir.github.io/re-identification-system
   chart: re-identification-system
-  version: 0.0.13
+  version: 0.0.14
   targetNamespace: ${NAMESPACE}
   valuesContent: |-
     basePath: /${NAMESPACE}/re-identification-system
@@ -75,10 +75,14 @@ spec:
         tag: ${BRANCH_NAME}-${SHORT_SHA}
 
     triton:
+      gpu:
+        enabled: true
+        num: 1
+        type: nvidia-tesla-t4
       resources:
         limits:
-          cpu: 4000m
-          memory: 8Gi
+          cpu: 2000m
+          memory: 6Gi
       models:
         - name: swin-reid
           # Vanilla model from Nvidia:
@@ -100,6 +104,7 @@ spec:
         - stream: cloud-line-crossing
         - stream: cloud-person-cutout
         - stream: cloud-person-re-id
+          disableMatching: true
           enablePromMetricsScraping: true
         - stream: cloud-face-cover
         - stream: cloud-employee-loitering
