@@ -3,6 +3,23 @@ entries:
   re-identification-system:
   - apiVersion: v2
     appVersion: 0.1.0
+    created: "2026-01-09T10:37:30.441543476Z"
+    dependencies:
+    - name: triton
+      repository: https://teknoir.github.io/triton-helm
+      version: 0.2.0-cloud.4
+    - name: event-processing-pipeline
+      repository: https://teknoir.github.io/event-processing-pipeline-helm
+      version: 0.0.11
+    description: Helm chart for deploying Re-Identification System services.
+    digest: 21147fa536625dd18aad6afb5173042e0fa0d195093c9a27efe0d08c219d9c54
+    name: re-identification-system
+    type: application
+    urls:
+    - https://github.com/teknoir/re-identification-system/releases/download/re-identification-system-0.0.14/re-identification-system-0.0.14.tgz
+    version: 0.0.14
+  - apiVersion: v2
+    appVersion: 0.1.0
     created: "2026-01-08T08:44:19.733069304Z"
     dependencies:
     - name: triton
@@ -374,4 +391,4 @@ entries:
     urls:
     - https://github.com/teknoir/re-identification-system/releases/download/re-identification-system-0.0.1-beta.2/re-identification-system-0.0.1-beta.2.tgz
     version: 0.0.1-beta.2
-generated: "2026-01-08T08:44:19.733302799Z"
+generated: "2026-01-09T10:37:30.441791952Z"
