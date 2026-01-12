@@ -110,6 +110,8 @@ spec:
             disableMatching: true
           enablePromMetricsScraping: true
         - stream: cloud-face-cover
+          image:
+            tag: jernejjerin-l2-71-migrate-face-covering-flow-e298b45
         - stream: cloud-employee-loitering
           image:
             tag: feature-line-crossing-cloud-stream-73de241
