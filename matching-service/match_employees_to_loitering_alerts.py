@@ -89,10 +89,10 @@ def lookup_entry_employee(
         for person in people:
             events = person.get("events", [])
             for event in events:
-                entry_id = event.get("entry_id")
-                if entry_id == detection_id:
-                    # Found the matching entry
-                    employee_id = event.get("employee_id")
+                # Found the matching entry
+                employee_id = event.get("employee_id")
+
+                if employee_id is not None:
                     logger.debug(
                         f"Found entry {detection_id} with employee_id={employee_id}"
                     )
