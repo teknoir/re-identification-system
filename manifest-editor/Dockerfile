@@ -1,5 +1,5 @@
 # Use a small, secure Python image
-FROM python:3.11-slim
+FROM python:3.15-slim
 
 # Environment: prevent .pyc and enable unbuffered logs
 ENV PYTHONDONTWRITEBYTECODE=1 \
